@@ -17,6 +17,34 @@ PENDING_DIR = Path(r"C:\QQBot\sticker_inbox\_pending")
 IMAGE_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
 MAX_BYTES = 3 * 1024 * 1024
 PROBABILITY = 0.35
+# 优先用「大肥鱼」本体表情包（kiriyuki.com，CC BY-NC 4.0），她自己的形象更贴人设
+PREFER_PACK = "nekowhale"
+PREFER_WEIGHT = 0.8
+# 语义检索：用回复文本和 use/tags/emotion 的字符二元组重合度加权
+SEMANTIC_ON = True
+SEMANTIC_WEIGHT = 8.0
+SEMANTIC_TOP = 8
+# 回复里出现这些词 -> 优先找带对应标签的图（短句对不上长 use，靠这个补）
+SYNONYMS = {
+    "谢谢": ["感谢", "道谢", "谢谢", "谢啦"],
+    "感谢": ["感谢", "道谢", "谢谢"],
+    "夸": ["求夸", "被夸", "夸我", "表扬"],
+    "骂": ["挨骂", "被骂", "骂我", "道歉", "对不起"],
+    "对不起": ["道歉", "对不起", "认错"],
+    "困": ["困", "睡觉", "晚安", "累"],
+    "睡": ["睡觉", "困", "晚安"],
+    "累": ["累", "疲惫", "摆烂", "摸鱼"],
+    "难过": ["难过", "委屈", "安慰", "抱抱"],
+    "委屈": ["委屈", "难过", "安慰"],
+    "哭": ["哭", "含泪", "委屈"],
+    "生气": ["生气", "不爽", "炸毛", "记仇"],
+    "喜欢": ["喜欢", "贴贴", "爱心", "比心"],
+    "生气": ["生气", "不爽", "炸毛"],
+    "吃": ["吃", "干饭", "白饭", "饿了"],
+    "饿": ["吃", "干饭", "饿了"],
+    "加班": ["加班", "上班", "赶稿", "社畜"],
+    "摸鱼": ["摸鱼", "偷懒", "摆烂", "上班"],
+}
 PENDING_TTL = 24 * 3600  # 暂存 24 小时：避免重启/隔天就丢
 AUTO_TAG = True  # 新存的图用视觉模型自动打标
 
@@ -31,18 +59,18 @@ MAGIC = [
 # 回复情绪 -> (候选主情绪, 关键词, 基础强度)
 FAMILIES = {
     "angry": {
-        "moods": ["生气", "暴怒", "抓狂", "嘲讽", "吐槽", "摆烂", "嚣张"],
+        "moods": ["生气", "暴怒", "抓狂", "嘲讽", "吐槽", "摆烂", "嚣张", "拒绝"],
         "kw": ["哼", "生气", "讨厌", "烦", "可恶", "闭嘴", "揍", "再说一遍", "叫谁", "不服", "欠", "滚",
                "气死", "烦死", "受不了", "讨厌死", "臭", "傻", "骂", "无赖", "欠揍"],
         "base": 3,
     },
     "sad": {
-        "moods": ["难过", "委屈", "破防", "卖惨", "含泪", "忧郁", "尴尬", "慌张", "紧张"],
+        "moods": ["难过", "委屈", "破防", "卖惨", "含泪", "忧郁", "尴尬", "慌张", "紧张", "道歉", "安慰"],
         "kw": ["呜", "难过", "伤心", "哭", "委屈", "算了", "没吃饱", "可怜", "不要"],
         "base": 2,
     },
     "shy": {
-        "moods": ["害羞", "含泪"],
+        "moods": ["害羞", "含泪", "喜欢"],
         "kw": ["害羞", "好羞", "脸红", "才不", "真的吗", "不好意思", "讨厌啦", "比心", "心动"],
         "base": 3,
     },
@@ -53,7 +81,8 @@ FAMILIES = {
     },
     "happy": {
         "moods": ["开心", "大笑", "满足", "得意", "卖萌", "搞笑", "沙雕", "平静",
-                  "疑惑", "调皮", "乖巧", "自信", "期待", "偷瞄"],
+                  "疑惑", "调皮", "乖巧", "自信", "期待", "偷瞄",
+                  "憨", "搞怪", "兴奋", "思考", "打招呼", "感谢"],
         "kw": ["好耶", "哈哈", "嘿嘿", "开心", "太好了", "笑", "耶", "棒", "收到", "吃饱"],
         "base": 2,
     },
@@ -135,6 +164,42 @@ class Main(star.Star):
             v -= 1
         return max(1, min(5, v))
 
+    @staticmethod
+    def _bigrams(s: str) -> set[str]:
+        s = "".join(ch for ch in s if ch.strip())
+        return {s[i:i + 2] for i in range(len(s) - 1)} if len(s) > 1 else {s}
+
+    def _semantic_pool(self, text: str, items: list[dict]) -> list[tuple[float, dict]]:
+        """按 use/tags/emotion 的字符重合度给候选打分（中文不需要分词）。"""
+        q = self._bigrams(text)
+        if not q:
+            return []
+        out = []
+        for e in items:
+            blob = " ".join([
+                str(e.get("use") or ""),
+                str(e.get("desc") or "")[:40],
+                " ".join(str(x) for x in (e.get("tags") or [])),
+                str(e.get("emotion") or ""),
+                str(e.get("text") or ""),
+            ])
+            b = self._bigrams(blob)
+            if not b:
+                continue
+            inter = len(q & b)
+            jac = inter / (len(q) + len(b) - inter) if inter else 0.0
+            hit = sum(1 for tg in (e.get("tags") or []) if tg and str(tg) in text)
+            score = jac * 12 + hit * 3
+            # 同义词：回复里有"谢谢"就找 tags 带"感谢"的图（不受二元组交集限制）
+            blob2 = blob + " " + str(e.get("emotion") or "")
+            for kw, wants in SYNONYMS.items():
+                if kw in text and any(w in blob2 for w in wants):
+                    score += 6.0
+            if score > 0.4:
+                out.append((score, e))
+        out.sort(key=lambda x: -x[0])
+        return out[:SEMANTIC_TOP]
+
     def _pick(self, text: str, is_private: bool = True) -> Path | None:
         items = self._index()
         if not items:
@@ -161,23 +226,45 @@ class Main(star.Star):
                 pool = narrowed
                 break
 
-        # 4) 场景加权
+        # 4) 场景加权（+ 优先本体表情包）
         def weight(e: dict) -> float:
             w = 1.0
             for scene in e.get("scenes") or []:
                 if scene and scene in text:
                     w += 2.0
+            if e.get("pack") == PREFER_PACK:
+                w *= 1.0 + PREFER_WEIGHT * 4  # 本体表情权重高 5 倍左右
             return w
 
-        try:
-            chosen = random.choices(pool, weights=[weight(e) for e in pool], k=1)[0]
-        except Exception:
-            chosen = random.choice(pool)
+        # 5) 语义加权：把 use/tags 跟回复文本对得上的图提上来
+        sem: dict[str, float] = {}
+        if SEMANTIC_ON:
+            for sc, e in self._semantic_pool(text, pool):
+                sem[str(e.get("file"))] = sc
+            if not sem:
+                for sc, e in self._semantic_pool(text, items):
+                    sem[str(e.get("file"))] = sc
+                    if e not in pool:
+                        pool.append(e)
+
+        def weight2(e: dict) -> float:
+            return weight(e) + SEMANTIC_WEIGHT * sem.get(str(e.get("file")), 0.0)
+
+        # 语义强命中：70% 直接在最像的 3 张里挑，避免被 500 张的基数稀释
+        strong = [e for sc, e in self._semantic_pool(text, items)[:3] if sc >= 6.0]
+        if strong and random.random() < 0.7:
+            chosen = random.choice(strong)
+        else:
+            try:
+                chosen = random.choices(pool, weights=[max(0.01, weight2(e)) for e in pool], k=1)[0]
+            except Exception:
+                chosen = random.choice(pool)
         path = STICKER_DIR / str(chosen.get("file") or "")
         if not path.exists():
             return self._pick_fallback()
         logger.info(
-            f"[sticker] {fam or '任意'} 强度{target_int} -> {chosen.get('mood')}"
+            f"[sticker] {fam or '任意'} 强度{target_int} -> {chosen.get('mood')}/{chosen.get('pack') or 'meme'}"
+            f" 语义{sem.get(str(chosen.get('file')), 0):.1f}｜{str(chosen.get('use') or '')[:24]}"
             f"/{(chosen.get('tags') or [''])[0]} 强度{chosen.get('intensity')} "
             f"{chosen.get('safety')}"
         )
