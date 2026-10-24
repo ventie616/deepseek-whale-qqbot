@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import json
+import asyncio
 import random
 import time
 from pathlib import Path
@@ -8,6 +9,7 @@ from pathlib import Path
 from astrbot.api import logger, star
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.message_components import Image, Plain
+from astrbot.core.message.message_event_result import MessageChain
 
 STICKER_DIR = Path(r"C:\QQBot\stickers")
 MISC_DIR = STICKER_DIR / "misc"
@@ -17,6 +19,7 @@ PENDING_DIR = Path(r"C:\QQBot\sticker_inbox\_pending")
 IMAGE_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
 MAX_BYTES = 3 * 1024 * 1024
 PROBABILITY = 0.35
+PENDING_KEY = "pending_sticker"
 # 优先用「大肥鱼」本体表情包（kiriyuki.com，CC BY-NC 4.0），她自己的形象更贴人设
 PREFER_PACK = "nekowhale"
 PREFER_WEIGHT = 0.8
@@ -102,6 +105,8 @@ def _guess_ext(data: bytes) -> str:
 class Main(star.Star):
     def __init__(self, context: star.Context) -> None:
         super().__init__(context)
+        self._big_cache: dict[str, frozenset] = {}
+        self._big_mtime = 0.0
         self._pending: dict[str, dict] = {}
         self._cache_mtime = 0.0
         self._cache_items: list[dict] = []
@@ -170,28 +175,40 @@ class Main(star.Star):
         return {s[i:i + 2] for i in range(len(s) - 1)} if len(s) > 1 else {s}
 
     def _semantic_pool(self, text: str, items: list[dict]) -> list[tuple[float, dict]]:
-        """按 use/tags/emotion 的字符重合度给候选打分（中文不需要分词）。"""
+        """按 use/tags/emotion 的字符重合度打分（带缓存，避免每轮重算 500 条）。"""
+        try:
+            mtime = INDEX_PATH.stat().st_mtime
+        except OSError:
+            mtime = 0.0
+        if mtime != self._big_mtime:
+            self._big_cache.clear()
+            self._big_mtime = mtime
+
         q = self._bigrams(text)
         if not q:
             return []
+        qchars = set(text)
         out = []
         for e in items:
-            blob = " ".join([
-                str(e.get("use") or ""),
-                str(e.get("desc") or "")[:40],
-                " ".join(str(x) for x in (e.get("tags") or [])),
-                str(e.get("emotion") or ""),
-                str(e.get("text") or ""),
-            ])
-            b = self._bigrams(blob)
-            if not b:
-                continue
+            f = str(e.get("file"))
+            cached = self._big_cache.get(f)
+            if cached is None:
+                blob = " ".join([
+                    str(e.get("use") or ""),
+                    str(e.get("desc") or "")[:40],
+                    " ".join(str(x) for x in (e.get("tags") or [])),
+                    str(e.get("emotion") or ""),
+                    str(e.get("text") or ""),
+                ])
+                cached = (frozenset(self._bigrams(blob)), blob)
+                self._big_cache[f] = cached
+            b, blob2 = cached
             inter = len(q & b)
-            jac = inter / (len(q) + len(b) - inter) if inter else 0.0
+            if not inter:
+                continue
+            jac = inter / (len(q) + len(b) - inter)
             hit = sum(1 for tg in (e.get("tags") or []) if tg and str(tg) in text)
             score = jac * 12 + hit * 3
-            # 同义词：回复里有"谢谢"就找 tags 带"感谢"的图（不受二元组交集限制）
-            blob2 = blob + " " + str(e.get("emotion") or "")
             for kw, wants in SYNONYMS.items():
                 if kw in text and any(w in blob2 for w in wants):
                     score += 6.0
@@ -234,24 +251,30 @@ class Main(star.Star):
                     w += 2.0
             if e.get("pack") == PREFER_PACK:
                 w *= 1.0 + PREFER_WEIGHT * 4  # 本体表情权重高 5 倍左右
+            # 大文件首次上传慢（实测 194KB 要 3.2s），给超过 120KB 的降权
+            try:
+                kb = (STICKER_DIR / str(e.get("file"))).stat().st_size / 1024
+                if kb > 200:
+                    w *= 0.25
+                elif kb > 120:
+                    w *= 0.6
+            except OSError:
+                pass
             return w
 
         # 5) 语义加权：把 use/tags 跟回复文本对得上的图提上来
         sem: dict[str, float] = {}
+        sem_items: list[tuple[float, dict]] = []
         if SEMANTIC_ON:
-            for sc, e in self._semantic_pool(text, pool):
+            sem_items = self._semantic_pool(text, items)
+            for sc, e in sem_items:
                 sem[str(e.get("file"))] = sc
-            if not sem:
-                for sc, e in self._semantic_pool(text, items):
-                    sem[str(e.get("file"))] = sc
-                    if e not in pool:
-                        pool.append(e)
+        strong = [e for sc, e in sem_items[:3] if sc >= 6.0]
 
         def weight2(e: dict) -> float:
             return weight(e) + SEMANTIC_WEIGHT * sem.get(str(e.get("file")), 0.0)
 
         # 语义强命中：70% 直接在最像的 3 张里挑，避免被 500 张的基数稀释
-        strong = [e for sc, e in self._semantic_pool(text, items)[:3] if sc >= 6.0]
         if strong and random.random() < 0.7:
             chosen = random.choice(strong)
         else:
@@ -304,9 +327,30 @@ class Main(star.Star):
             path = self._pick(text, is_private=is_private)
             if path is None:
                 return
-            result.chain.append(Image.fromFileSystem(str(path)))
+            # 不塞进消息链：图片冷上传要 1.5~4 秒，会把文字一起拖慢
+            event.set_extra(PENDING_KEY, str(path))
         except Exception:
             pass
+
+    @filter.after_message_sent()
+    async def send_pending_sticker(self, event: AstrMessageEvent) -> None:
+        """文字已经发出去了，再把表情补上——顺序对，文字也不被上传拖慢。"""
+        path = event.get_extra(PENDING_KEY)
+        if not path:
+            return
+        event.set_extra(PENDING_KEY, None)
+
+        async def _send() -> None:
+            try:
+                await asyncio.sleep(0.25)
+                await self.context.send_message(
+                    event.unified_msg_origin,
+                    MessageChain([Image.fromFileSystem(str(path))]),
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.info(f"[sticker] 补发失败：{exc}")
+
+        asyncio.create_task(_send())
 
     # ---------------- 收图：暂存，等主人发话再入库 ----------------
     @filter.event_message_type(filter.EventMessageType.ALL)
