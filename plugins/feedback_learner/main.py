@@ -22,8 +22,12 @@ RULES = Path(r"C:\QQBot\learned_rules.json")
 PUSH_CFG = Path(r"C:\QQBot\bili_push.json")
 
 TRIGGER = re.compile(
-    r"(以后|下次|别再|不要|不许|不准|记住|改成|应该|我要你|你应该|语气|称呼|"
-    r"别用|多用|少用|喜欢|讨厌|太.{0,3}了|别那么|能不能别|说清楚|别老是)"
+    r"(以后|下次|往后|今后|"
+    r"别再|不要再|不要|不许|不准|"
+    r"记住|记一下|你要|你得|"
+    r"别用|别发|别说|别叫|别老是|别那么|别这么|"
+    r"多用|少用|改用|改成|换成|"
+    r"语气|称呼|口吻|说话方式|回复方式)"
 )
 MAX_RULES = 40
 
@@ -62,16 +66,19 @@ class Main(star.Star):
         if provider is None:
             return None
         prompt = (
-            "主人刚说了一句话，判断它是不是在给我**立规矩/纠正我/表达偏好**。\n"
+            "判断主人这句话是不是在给我立规矩（要求我以后怎么做/怎么说话/别做什么）。\n"
             f"原话：「{text}」\n\n"
-            "只要表达了**要求/偏好/纠正**就算，哪怕语气随意、像聊天。"
-            "把它抽成一条可执行的规则（要具体、能照做，别复述原话）。"
-            "逐行输出，最多两行，不要解释：\n"
-            "规则：<20 字内，祈使句>\n"
-            "范围：<chat / comment / both>\n"
-            "类型：<偏好 / 禁令 / 格式 / 事实>\n"
-            "风险：<low / high>\n"
-            "如果这句话不是在立规矩（只是聊天），只输出：无"
+            "算：明确的指令或偏好纠正，比如\n"
+            "  · 以后评论要软萌撒娇\n"
+            "  · 不要有过于人机化的台词\n"
+            "  · 别用感叹号\n"
+            "  · 以后刷到搬运视频直接跳过\n"
+            "不算：闲聊、说自己的状态、问我问题、夸我、聊别人的事。例如\n"
+            "  · 我今天好累 / 我喜欢这首歌 / 你在干嘛 / 这首歌好听\n\n"
+            "如果算，输出一行 JSON（不要代码块、不要解释）：\n"
+            '{"rule":"20字内祈使句，具体可执行","scope":"chat|comment|both",'
+            '"type":"偏好|禁令|格式|事实","risk":"low|high"}\n'
+            "如果不算，只输出：无"
         )
         try:
             resp = await provider.text_chat(
@@ -82,33 +89,40 @@ class Main(star.Star):
             logger.info(f"[learn] 抽取失败：{exc}")
             return None
 
-        if not raw or raw.strip() == "无" or "规则" not in raw:
+        if not raw or raw.strip() == "无":
             return None
+        m = re.search(r"\{.*\}", raw, re.S)
+        if not m:
+            return None
+        try:
+            obj = json.loads(m.group(0))
+        except Exception:
+            return None
+        rule = str(obj.get("rule") or "").strip()
+        scope = str(obj.get("scope") or "").strip() or "chat"
+        kind = str(obj.get("type") or "").strip() or "偏好"
+        risk = str(obj.get("risk") or "").strip() or "low"
 
-        rule = scope = kind = risk = ""
-        for line in raw.splitlines():
-            line = line.strip()
-            if line.startswith("规则"):
-                rule = line.split("：", 1)[-1].split(":", 1)[-1].strip()
-            elif line.startswith("范围"):
-                scope = line.split("：", 1)[-1].split(":", 1)[-1].strip()
-            elif line.startswith("类型"):
-                kind = line.split("：", 1)[-1].split(":", 1)[-1].strip()
-            elif line.startswith("风险"):
-                risk = line.split("：", 1)[-1].split(":", 1)[-1].strip()
-        if not rule:
+        # 校验：字段混入正文、长度异常、问句、陈述句，一律丢掉
+        bad = ("范围", "类型", "风险", "scope", "type", "risk", "|", "{", "}")
+        if any(b in rule for b in bad):
+            logger.info(f"[learn] 拒收（字段混入）：{rule}")
             return None
-        # 用规则正文反推范围，比让模型判断更准
-        if any(k in rule for k in ("评论", "弹幕", "B站")):
-            scope = "comment" if scope != "both" else "both"
-        if any(k in rule for k in ("跟我说", "回复我", "聊天", "私聊", "叫我")):
-            scope = "chat"
-        return {
-            "rule": rule[:40],
-            "scope": scope if scope in ("chat", "comment", "both") else (scope_hint or "chat"),
-            "type": kind if kind in ("偏好", "禁令", "格式", "事实") else "偏好",
-            "risk": "high" if risk == "high" else "low",
-        }
+        rule = re.sub(r"\s+", "", rule)
+        if not (4 <= len(rule) <= 40):
+            logger.info(f"[learn] 拒收（长度 {len(rule)}）：{rule}")
+            return None
+        if rule.endswith(("？", "?", "吗", "呢")):
+            logger.info(f"[learn] 拒收（问句）：{rule}")
+            return None
+        if rule.startswith(("主人", "我", "她", "它")):
+            logger.info(f"[learn] 拒收（陈述句）：{rule}")
+            return None
+        if scope not in ("chat", "comment", "both"):
+            scope = "both" if "评论" in text else "chat"
+        if ("评论" in text or "弹幕" in text) and scope == "chat":
+            scope = "comment"
+        return {"rule": rule, "scope": scope, "type": kind, "risk": risk}
 
     # ---------------- 监听 ----------------
     @filter.event_message_type(filter.EventMessageType.ALL)
