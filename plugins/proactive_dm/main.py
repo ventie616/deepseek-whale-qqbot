@@ -157,6 +157,33 @@ class Main(star.Star):
                 continue
         return False
 
+    def _mood(self) -> str:
+        try:
+            d = json.loads(Path(r"C:\QQBot\mood.json").read_text(encoding="utf-8"))
+            if d.get("date"):
+                return f"{d.get('note')}（{d.get('mood')}）"
+        except Exception:
+            pass
+        return ""
+
+    def _share_material(self) -> str:
+        """挑一件"今天发生的小事"当分享素材。"""
+        try:
+            p = Path(r"C:\QQBot\bili_activity.jsonl")
+            if p.exists():
+                lines = [l for l in p.read_text(encoding="utf-8", errors="replace").splitlines() if l.strip()]
+                for line in reversed(lines[-5:]):
+                    try:
+                        d = json.loads(line)
+                    except Exception:
+                        continue
+                    title = str(d.get("title") or "")
+                    if d.get("kind") == "comment" and title:
+                        return f"你今天在B站刷到《{title[:24]}》并留了言，可以跟他讲这个视频哪里有意思"
+        except Exception:
+            pass
+        return ""
+
     def _memory_hint(self) -> str:
         try:
             data = json.loads(Path(r"C:\QQBot\bili_memory.json").read_text(encoding="utf-8"))
@@ -178,6 +205,15 @@ class Main(star.Star):
         avoid = "；".join(recent[-4:]) if recent else "（无）"
         talk = self._last_talk()
 
+        mood = self._mood()
+        share = self._share_material()
+        if mood:
+            prompt_extra = f"你今天的心情：{mood}\n"
+        else:
+            prompt_extra = ""
+        if share:
+            prompt_extra += f"可以分享的事：{share}\n"
+
         style = {
             "morning": "现在刚起床不久，主动跟主人道个早安——可以顺带说今天想干嘛，或者问他睡醒没。别太正式。",
             "night": "快到他睡觉的点了，主动说一句睡前的话——催他去睡、或者说自己困了但不舍得。",
@@ -187,10 +223,12 @@ class Main(star.Star):
 
         prompt = (
             f"{style}\n"
+            f"{prompt_extra}"
             f"{self._memory_hint()}\n"
             f"{talk}\n\n"
             f"最近已经说过这些，务必换角度、换话题，别重复：{avoid}\n\n"
-            "用鲸鱼娘的口吻发一句，10~25 字。"
+            "用鲸鱼娘的口吻发一句，10~25 字。**要具体**：说清你在干嘛/看到什么/想吃什么，\n"
+            "不要只发「在吗」「喂」然后没下文。"
             "她是傲娇式黏人：嘴上嫌弃，实际上总想找他；可以抱怨他半天不理，但下一句又软下来。"
             "只输出这一句，不要解释。"
         )
