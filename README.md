@@ -206,6 +206,17 @@ Register-ScheduledTask -TaskName "QQBotWatchdog" -Action $action -Trigger $trigg
 
 ---
 
+## 先读哪份文档
+
+| 你想干什么 | 看这个 |
+|---|---|
+| **刚跑起来，想知道怎么用** | [`docs/USAGE.md`](docs/USAGE.md) —— 指令表、常见操作、出问题怎么查 |
+| 装环境、连 B 站、灌人格 | [`docs/SETUP.md`](docs/SETUP.md) |
+| 想改代码，先理解为什么这么设计 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
+| 准备发布 / 担心封号 | [`docs/DISCLAIMER.md`](docs/DISCLAIMER.md) |
+
+---
+
 ## 已知限制（别指望它是全能）
 
 - **判据是模型判断**，不是硬规则；它会把 76% 的视频判成"不值得"，也会漏
