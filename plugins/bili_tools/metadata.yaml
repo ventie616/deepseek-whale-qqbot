@@ -1,0 +1,4 @@
+name: bili_tools
+desc: B 站浏览工具：搜索视频、视频详情、热门、排行榜、UP 主信息（走公开接口，无需 API Key）
+author: local
+version: 1.0.0

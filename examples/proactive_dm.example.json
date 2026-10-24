@@ -1,0 +1,17 @@
+{
+  "enabled": true,
+  "target_qq": "YOUR_QQ",
+  "min_minutes": 45,
+  "max_minutes": 90,
+  "active_hours": [
+    [
+      8.5,
+      23.5
+    ]
+  ],
+  "max_per_day": 14,
+  "followup_minutes": 35,
+  "max_followups_per_day": 2,
+  "morning_ritual": true,
+  "night_ritual": true
+}

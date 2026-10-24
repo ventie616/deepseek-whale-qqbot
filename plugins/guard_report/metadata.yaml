@@ -1,0 +1,4 @@
+name: guard_report
+desc: 守护脚本拉起后私聊告知；/守护状态 查看守护存活
+author: local
+version: 1.0.0

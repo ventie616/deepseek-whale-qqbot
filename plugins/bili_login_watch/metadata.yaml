@@ -1,0 +1,4 @@
+name: bili_login_watch
+desc: B站 登录态每日自检，失效主动私聊提醒（/bilicheck 可立即检查）
+author: local
+version: 1.0.0

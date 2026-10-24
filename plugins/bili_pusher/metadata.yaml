@@ -1,0 +1,4 @@
+name: bili_pusher
+desc: 定时刷 B 站推荐，挑到有意思的视频就 @ 主人说一句（私聊推送）
+author: local
+version: 1.0.0

@@ -1,0 +1,32 @@
+{
+  "enabled": true,
+  "mode": "auto",
+  "interval_minutes": 120,
+  "jitter_minutes": 20,
+  "bili_at_name": "YOUR_BILI_NAME",
+  "bili_at_mid": "YOUR_BILI_MAIN_UID",
+  "target_qq": "YOUR_QQ",
+  "target_name": "YOUR_NICKNAME",
+  "active_hours": [
+    [
+      12,
+      14
+    ],
+    [
+      16,
+      22
+    ]
+  ],
+  "weekend_all_day": false,
+  "vision_enable": true,
+  "vision_mode": "always",
+  "content_source": "subtitle_first",
+  "strictness": "loose",
+  "skip_repost": true,
+  "dedupe_ratio": 0.82,
+  "dedupe_days": 7,
+  "link_read": true,
+  "link_vision": true,
+  "memory_inject": true,
+  "memory_items": 5
+}

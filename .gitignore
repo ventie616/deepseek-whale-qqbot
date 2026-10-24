@@ -3,15 +3,14 @@
 !/data/anime_kb/
 /data/anime_kb/*
 !/data/anime_kb/*.json
-/logs/
+logs/
 *.log
-/chat_archive/
-/reports/
+chat_archive/
+reports/
 previews/
-/downloads/
-/sticker_inbox/
-/stickers/
-/voice_clips/
+downloads/
+sticker_inbox/
+stickers/
 
 # 密钥
 bili_account.json
@@ -32,20 +31,3 @@ __pycache__/
 *.pyc
 snowluma/
 node_modules/
-
-# 控制台 token（本地密钥）
-/dashboard/.token
-*.token
-
-# 运行数据里容易被误提交的
-mood.json
-bili_activity.jsonl
-bili_push_state.json
-bili_login_state.json
-bili_pic_cache.json
-bili_trigger.json
-bili_trigger_result.json
-guard_pending.json
-watchdog_heartbeat.json
-watchdog.pid
-persona/whale-girl.old.txt

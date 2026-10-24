@@ -1,0 +1,1550 @@
+[
+  {
+    "term": "三连",
+    "aliases": [],
+    "cat": "平台",
+    "meaning": "点赞投币收藏一条龙，观众给UP主的最高礼节",
+    "tone": "夸人时用",
+    "safety": "ok"
+  },
+  {
+    "term": "二创",
+    "aliases": [
+      "二创视频"
+    ],
+    "cat": "创作",
+    "meaning": "用原作素材二次创作，包括剪辑、手书、翻唱",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "同人",
+    "aliases": [
+      "同人作品"
+    ],
+    "cat": "创作",
+    "meaning": "粉丝基于原作做的非官方作品",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "鬼畜",
+    "aliases": [
+      "鬼畜视频"
+    ],
+    "cat": "创作",
+    "meaning": "把音画素材重复剪辑成洗脑搞笑视频",
+    "tone": "玩梗",
+    "safety": "ok"
+  },
+  {
+    "term": "MAD",
+    "aliases": [],
+    "cat": "创作",
+    "meaning": "用动画素材配乐剪的短片，重氛围",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "AMV",
+    "aliases": [],
+    "cat": "创作",
+    "meaning": "用动画素材剪的MV，重节奏",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "手书",
+    "aliases": [
+      "手书动画"
+    ],
+    "cat": "创作",
+    "meaning": "逐帧手绘的短动画，多为同人",
+    "tone": "夸画师",
+    "safety": "ok"
+  },
+  {
+    "term": "描改",
+    "aliases": [
+      "描图改"
+    ],
+    "cat": "创作",
+    "meaning": "照着原图改画，常见于整活",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "名场面",
+    "aliases": [],
+    "cat": "动画",
+    "meaning": "让人印象深刻的名镜头，常被截成表情包",
+    "tone": "玩梗",
+    "safety": "ok"
+  },
+  {
+    "term": "神回",
+    "aliases": [
+      "神回啊"
+    ],
+    "cat": "动画",
+    "meaning": "单集质量爆炸，看完想立刻二刷",
+    "tone": "夸",
+    "safety": "ok"
+  },
+  {
+    "term": "神展开",
+    "aliases": [],
+    "cat": "动画",
+    "meaning": "剧情突然大转折，出乎意料但合理",
+    "tone": "惊叹",
+    "safety": "ok"
+  },
+  {
+    "term": "霸权",
+    "aliases": [
+      "霸权番"
+    ],
+    "cat": "动画",
+    "meaning": "当季热度碾压同期的作品",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "厕纸",
+    "aliases": [
+      "轻改厕纸"
+    ],
+    "cat": "动画",
+    "meaning": "吐槽轻小说改编动画质量差、像厕纸",
+    "tone": "吐槽",
+    "safety": "ok"
+  },
+  {
+    "term": "轻改",
+    "aliases": [],
+    "cat": "动画",
+    "meaning": "轻小说改编动画",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "漫改",
+    "aliases": [],
+    "cat": "动画",
+    "meaning": "漫画改编动画",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "游改",
+    "aliases": [],
+    "cat": "动画",
+    "meaning": "游戏改编动画",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "龙傲天",
+    "aliases": [],
+    "cat": "角色",
+    "meaning": "主角无敌爽文型人物",
+    "tone": "吐槽",
+    "safety": "ok"
+  },
+  {
+    "term": "中二",
+    "aliases": [
+      "中二病"
+    ],
+    "cat": "角色",
+    "meaning": "自以为有超能力、说话夸张的中学生气质",
+    "tone": "吐槽",
+    "safety": "ok"
+  },
+  {
+    "term": "病娇",
+    "aliases": [],
+    "cat": "角色",
+    "meaning": "爱到偏执、会走极端的人物属性",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "傲娇",
+    "aliases": [],
+    "cat": "角色",
+    "meaning": "嘴硬心软，明明在意却装不在乎",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "三无",
+    "aliases": [],
+    "cat": "角色",
+    "meaning": "无口无心无表情的角色属性",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "元气",
+    "aliases": [],
+    "cat": "角色",
+    "meaning": "活泼有活力，嗓门大的角色属性",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "萝莉",
+    "aliases": [],
+    "cat": "角色",
+    "meaning": "外表幼小的少女角色（注意语境，别乱用）",
+    "tone": "慎用",
+    "safety": "nsfw"
+  },
+  {
+    "term": "御姐",
+    "aliases": [],
+    "cat": "角色",
+    "meaning": "成熟强势的年长女性角色",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "正太",
+    "aliases": [],
+    "cat": "角色",
+    "meaning": "外表年幼的少年角色",
+    "tone": "慎用",
+    "safety": "nsfw"
+  },
+  {
+    "term": "伪娘",
+    "aliases": [],
+    "cat": "角色",
+    "meaning": "男性外表女性化的角色",
+    "tone": "慎用",
+    "safety": "nsfw"
+  },
+  {
+    "term": "兽耳",
+    "aliases": [],
+    "cat": "角色",
+    "meaning": "带动物耳朵的角色属性",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "机娘",
+    "aliases": [],
+    "cat": "角色",
+    "meaning": "机械与人形结合的角色",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "女仆",
+    "aliases": [],
+    "cat": "角色",
+    "meaning": "女仆装扮的角色属性",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "JK",
+    "aliases": [],
+    "cat": "角色",
+    "meaning": "日本女高中生，常指校服风格",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "老婆",
+    "aliases": [
+      "我老婆"
+    ],
+    "cat": "角色",
+    "meaning": "把喜欢的角色称作老婆，纯玩梗",
+    "tone": "玩梗",
+    "safety": "ok"
+  },
+  {
+    "term": "谷子",
+    "aliases": [
+      "周边"
+    ],
+    "cat": "周边",
+    "meaning": "动漫周边商品，徽章立牌挂件都算",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "吧唧",
+    "aliases": [],
+    "cat": "周边",
+    "meaning": "徽章周边，日语音译",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "痛包",
+    "aliases": [],
+    "cat": "周边",
+    "meaning": "把周边挂满的包，展示用",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "手办",
+    "aliases": [],
+    "cat": "周边",
+    "meaning": "立体人物模型，价格从几十到上万",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "粘土人",
+    "aliases": [
+      "黏土人"
+    ],
+    "cat": "周边",
+    "meaning": "Q版可动手办系列",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "景品",
+    "aliases": [],
+    "cat": "周边",
+    "meaning": "抓娃娃机/景品机里的廉价手办",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "一番赏",
+    "aliases": [],
+    "cat": "周边",
+    "meaning": "抽奖式周边，抽到啥全看运气",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "扭蛋",
+    "aliases": [],
+    "cat": "周边",
+    "meaning": "投币随机出小周边",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "抽卡",
+    "aliases": [
+      "抽"
+    ],
+    "cat": "游戏",
+    "meaning": "花钱或用资源随机获得角色/道具",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "池子",
+    "aliases": [
+      "卡池"
+    ],
+    "cat": "游戏",
+    "meaning": "抽卡的奖池",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "保底",
+    "aliases": [],
+    "cat": "游戏",
+    "meaning": "抽到一定次数必出，安全网",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "大保底",
+    "aliases": [
+      "小保底"
+    ],
+    "cat": "游戏",
+    "meaning": "保底的两种档位，大保底更贵但必出",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "歪了",
+    "aliases": [],
+    "cat": "游戏",
+    "meaning": "抽卡没抽到想要的，出了别的",
+    "tone": "吐槽",
+    "safety": "ok"
+  },
+  {
+    "term": "沉船",
+    "aliases": [],
+    "cat": "游戏",
+    "meaning": "抽卡血本无归，什么都没抽到",
+    "tone": "吐槽",
+    "safety": "ok"
+  },
+  {
+    "term": "欧皇",
+    "aliases": [],
+    "cat": "游戏",
+    "meaning": "运气极好的人",
+    "tone": "调侃",
+    "safety": "ok"
+  },
+  {
+    "term": "非酋",
+    "aliases": [],
+    "cat": "游戏",
+    "meaning": "运气极差的人",
+    "tone": "自嘲",
+    "safety": "ok"
+  },
+  {
+    "term": "复刻",
+    "aliases": [],
+    "cat": "游戏",
+    "meaning": "老内容限时返场",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "开服",
+    "aliases": [],
+    "cat": "游戏",
+    "meaning": "游戏正式上线运营",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "氪",
+    "aliases": [
+      "氪金"
+    ],
+    "cat": "游戏",
+    "meaning": "花钱，氪金=充钱",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "肝",
+    "aliases": [
+      "肝帝"
+    ],
+    "cat": "游戏",
+    "meaning": "花大量时间刷，肝=熬夜猛玩",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "白嫖",
+    "aliases": [],
+    "cat": "游戏",
+    "meaning": "不花钱白拿",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "月卡党",
+    "aliases": [],
+    "cat": "游戏",
+    "meaning": "只买月卡的轻度付费玩家",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "648",
+    "aliases": [],
+    "cat": "游戏",
+    "meaning": "手游一单充值金额，代指一单",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "凹",
+    "aliases": [
+      "凹分"
+    ],
+    "cat": "游戏",
+    "meaning": "反复尝试追求高分/极限",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "收菜",
+    "aliases": [],
+    "cat": "游戏",
+    "meaning": "上线领日常奖励就下线",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "刀子",
+    "aliases": [
+      "刀"
+    ],
+    "cat": "剧情",
+    "meaning": "让人心碎的虐心剧情",
+    "tone": "吐槽",
+    "safety": "ok"
+  },
+  {
+    "term": "糖",
+    "aliases": [
+      "发糖"
+    ],
+    "cat": "剧情",
+    "meaning": "甜的部分，CP互动",
+    "tone": "夸",
+    "safety": "ok"
+  },
+  {
+    "term": "刀糖",
+    "aliases": [],
+    "cat": "剧情",
+    "meaning": "又虐又甜，先虐后甜",
+    "tone": "吐槽",
+    "safety": "ok"
+  },
+  {
+    "term": "破防",
+    "aliases": [],
+    "cat": "情绪",
+    "meaning": "被戳中软肋，绷不住了",
+    "tone": "自嘲",
+    "safety": "ok"
+  },
+  {
+    "term": "泪目",
+    "aliases": [],
+    "cat": "情绪",
+    "meaning": "看哭了，眼眶湿了",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "爷青结",
+    "aliases": [
+      "爷青回"
+    ],
+    "cat": "梗",
+    "meaning": "爷的青春结束了/回来了，怀旧感叹",
+    "tone": "玩梗",
+    "safety": "ok"
+  },
+  {
+    "term": "典",
+    "aliases": [
+      "太典了"
+    ],
+    "cat": "梗",
+    "meaning": "太典型了，常用于嘲讽套路",
+    "tone": "嘲讽",
+    "safety": "ok"
+  },
+  {
+    "term": "急了",
+    "aliases": [],
+    "cat": "梗",
+    "meaning": "对方被激怒、开始跳脚",
+    "tone": "嘲讽",
+    "safety": "ok"
+  },
+  {
+    "term": "蚌埠住了",
+    "aliases": [
+      "绷不住了"
+    ],
+    "cat": "梗",
+    "meaning": "忍不住笑/忍不住崩",
+    "tone": "玩梗",
+    "safety": "ok"
+  },
+  {
+    "term": "寄",
+    "aliases": [],
+    "cat": "梗",
+    "meaning": "完蛋了、没救了",
+    "tone": "自嘲",
+    "safety": "ok"
+  },
+  {
+    "term": "摆烂",
+    "aliases": [],
+    "cat": "梗",
+    "meaning": "放弃挣扎，破罐破摔",
+    "tone": "自嘲",
+    "safety": "ok"
+  },
+  {
+    "term": "内卷",
+    "aliases": [],
+    "cat": "梗",
+    "meaning": "过度竞争",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "躺平",
+    "aliases": [],
+    "cat": "梗",
+    "meaning": "不争了，就地躺下",
+    "tone": "自嘲",
+    "safety": "ok"
+  },
+  {
+    "term": "社死",
+    "aliases": [
+      "社会性死亡"
+    ],
+    "cat": "梗",
+    "meaning": "丢脸到想消失",
+    "tone": "自嘲",
+    "safety": "ok"
+  },
+  {
+    "term": "拿捏",
+    "aliases": [],
+    "cat": "梗",
+    "meaning": "完全掌控、吃得死死的",
+    "tone": "夸",
+    "safety": "ok"
+  },
+  {
+    "term": "平替",
+    "aliases": [],
+    "cat": "梗",
+    "meaning": "便宜的替代品",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "电子榨菜",
+    "aliases": [],
+    "cat": "梗",
+    "meaning": "吃饭时看的视频，下饭用",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "电子宠物",
+    "aliases": [],
+    "cat": "梗",
+    "meaning": "指的是陪聊的AI/虚拟角色",
+    "tone": "调侃",
+    "safety": "ok"
+  },
+  {
+    "term": "233",
+    "aliases": [],
+    "cat": "梗",
+    "meaning": "笑，源自猫扑表情编号",
+    "tone": "玩梗",
+    "safety": "ok"
+  },
+  {
+    "term": "awsl",
+    "aliases": [],
+    "cat": "梗",
+    "meaning": "啊我死了，表示可爱到受不了",
+    "tone": "玩梗",
+    "safety": "ok"
+  },
+  {
+    "term": "好开",
+    "aliases": [],
+    "cat": "梗",
+    "meaning": "这波开得好，夸操作",
+    "tone": "夸",
+    "safety": "ok"
+  },
+  {
+    "term": "开香槟",
+    "aliases": [],
+    "cat": "梗",
+    "meaning": "提前庆祝，常带反讽",
+    "tone": "嘲讽",
+    "safety": "ok"
+  },
+  {
+    "term": "爆金币",
+    "aliases": [],
+    "cat": "梗",
+    "meaning": "爆出金钱，指游戏/活动里掉钱或花钱",
+    "tone": "玩梗",
+    "safety": "ok"
+  },
+  {
+    "term": "上号",
+    "aliases": [],
+    "cat": "梗",
+    "meaning": "催人上线一起玩",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "就这",
+    "aliases": [],
+    "cat": "梗",
+    "meaning": "嘲讽对方不过如此",
+    "tone": "嘲讽",
+    "safety": "ok"
+  },
+  {
+    "term": "嘴替",
+    "aliases": [],
+    "cat": "梗",
+    "meaning": "说出你想说但没说的话的人",
+    "tone": "夸",
+    "safety": "ok"
+  },
+  {
+    "term": "神中神",
+    "aliases": [],
+    "cat": "梗",
+    "meaning": "吹到最高级的夸法",
+    "tone": "夸",
+    "safety": "ok"
+  },
+  {
+    "term": "含金量",
+    "aliases": [],
+    "cat": "梗",
+    "meaning": "内容的真实价值/分量",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "二刷",
+    "aliases": [
+      "三刷"
+    ],
+    "cat": "观看",
+    "meaning": "把同一部作品再看一遍",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "二周目",
+    "aliases": [
+      "三周目"
+    ],
+    "cat": "观看",
+    "meaning": "游戏/动画通关后再玩一遍",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "追番",
+    "aliases": [],
+    "cat": "观看",
+    "meaning": "跟着更新看新番",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "补番",
+    "aliases": [],
+    "cat": "观看",
+    "meaning": "补看以前没看的番",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "新番",
+    "aliases": [],
+    "cat": "观看",
+    "meaning": "当季新出的动画",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "番剧",
+    "aliases": [],
+    "cat": "观看",
+    "meaning": "日本动画剧集",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "剧场版",
+    "aliases": [],
+    "cat": "观看",
+    "meaning": "动画电影版",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "OVA",
+    "aliases": [],
+    "cat": "观看",
+    "meaning": "不 TV 播出的动画特典",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "原作党",
+    "aliases": [],
+    "cat": "观看",
+    "meaning": "看过原作并常拿原作比较的观众",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "动画党",
+    "aliases": [],
+    "cat": "观看",
+    "meaning": "只看动画没看原作的观众",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "考古",
+    "aliases": [],
+    "cat": "观看",
+    "meaning": "翻很久以前的内容",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "剧透",
+    "aliases": [
+      "剧透警告"
+    ],
+    "cat": "观看",
+    "meaning": "提前说剧情，一般要标警告",
+    "tone": "慎用",
+    "safety": "nsfw"
+  },
+  {
+    "term": "完结撒花",
+    "aliases": [],
+    "cat": "观看",
+    "meaning": "作品完结时的庆祝",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "追平",
+    "aliases": [],
+    "cat": "观看",
+    "meaning": "看到和更新进度一样",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "太太",
+    "aliases": [],
+    "cat": "称呼",
+    "meaning": "对同人作者的敬称，夸画得好",
+    "tone": "夸",
+    "safety": "ok"
+  },
+  {
+    "term": "画师",
+    "aliases": [
+      "神仙画师"
+    ],
+    "cat": "称呼",
+    "meaning": "画画的人，神仙=画得极好",
+    "tone": "夸",
+    "safety": "ok"
+  },
+  {
+    "term": "萌新",
+    "aliases": [],
+    "cat": "称呼",
+    "meaning": "新手自谦",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "老二次元",
+    "aliases": [],
+    "cat": "称呼",
+    "meaning": "入圈很久的人",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "二次元浓度",
+    "aliases": [],
+    "cat": "梗",
+    "meaning": "一个人身上的二次元气质有多浓",
+    "tone": "调侃",
+    "safety": "ok"
+  },
+  {
+    "term": "咕咕咕",
+    "aliases": [
+      "鸽子"
+    ],
+    "cat": "梗",
+    "meaning": "放鸽子、拖更不交稿",
+    "tone": "吐槽",
+    "safety": "ok"
+  },
+  {
+    "term": "挖坑",
+    "aliases": [
+      "填坑"
+    ],
+    "cat": "梗",
+    "meaning": "开新项目不完成/把坑补上",
+    "tone": "吐槽",
+    "safety": "ok"
+  },
+  {
+    "term": "摸鱼",
+    "aliases": [],
+    "cat": "梗",
+    "meaning": "上班上学时偷懒",
+    "tone": "自嘲",
+    "safety": "ok"
+  },
+  {
+    "term": "前方高能",
+    "aliases": [],
+    "cat": "弹幕",
+    "meaning": "提醒后面有刺激内容",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "弹幕护体",
+    "aliases": [],
+    "cat": "弹幕",
+    "meaning": "用弹幕挡住可怕画面",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "官方玩梗",
+    "aliases": [],
+    "cat": "梗",
+    "meaning": "官方自己玩自己的梗",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "声优梗",
+    "aliases": [],
+    "cat": "梗",
+    "meaning": "拿配音演员本人开玩笑",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "考据党",
+    "aliases": [],
+    "cat": "称呼",
+    "meaning": "喜欢考据设定细节的人",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "设定党",
+    "aliases": [],
+    "cat": "称呼",
+    "meaning": "喜欢研究世界观设定的人",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "白学",
+    "aliases": [],
+    "cat": "梗",
+    "meaning": "三角恋关系讨论，源自白色相簿2",
+    "tone": "玩梗",
+    "safety": "ok"
+  },
+  {
+    "term": "车万",
+    "aliases": [
+      "东方"
+    ],
+    "cat": "作品圈",
+    "meaning": "对东方Project的戏称",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "喵内",
+    "aliases": [],
+    "cat": "梗",
+    "meaning": "《天使降临到我身边》台词，卖萌用",
+    "tone": "玩梗",
+    "safety": "ok"
+  },
+  {
+    "term": "萌",
+    "aliases": [
+      "萌点"
+    ],
+    "cat": "梗",
+    "meaning": "可爱到让人心动的点",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "厨",
+    "aliases": [
+      "xx厨"
+    ],
+    "cat": "称呼",
+    "meaning": "某角色的死忠粉（中性用法）",
+    "tone": "慎用",
+    "safety": "nsfw"
+  },
+  {
+    "term": "二刺猿",
+    "aliases": [],
+    "cat": "梗",
+    "meaning": "\"二次元\"的自嘲说法",
+    "tone": "玩梗",
+    "safety": "ok"
+  },
+  {
+    "term": "萌战",
+    "aliases": [],
+    "cat": "活动",
+    "meaning": "角色人气投票比赛",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "B站三连",
+    "aliases": [],
+    "cat": "梗",
+    "meaning": "同\"三连\"",
+    "tone": "中性",
+    "safety": "ok"
+  },
+  {
+    "term": "佐助",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "火影忍者角色",
+    "tone": "中性",
+    "safety": "safe",
+    "source": "BV1Mupj6DEzk"
+  },
+  {
+    "term": "鸣人",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "火影忍者主角",
+    "tone": "中性",
+    "safety": "safe",
+    "source": "BV1Mupj6DEzk"
+  },
+  {
+    "term": "须佐",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "须佐能乎简称",
+    "tone": "中性",
+    "safety": "safe",
+    "source": "BV1Mupj6DEzk"
+  },
+  {
+    "term": "二柱子",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "佐助的黑话绰号",
+    "tone": "玩梗",
+    "safety": "safe",
+    "source": "BV1Mupj6DEzk"
+  },
+  {
+    "term": "钟馗",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "王者荣耀辅助英雄，靠钩子开团",
+    "tone": "中性",
+    "safety": "safe",
+    "source": "BV1LUNs6LEc3"
+  },
+  {
+    "term": "星泉",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "王者荣耀辅助装备，可连接队友保人",
+    "tone": "中性",
+    "safety": "safe",
+    "source": "BV1LUNs6LEc3"
+  },
+  {
+    "term": "玄策",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "王者荣耀刺客打野，钩链控制强",
+    "tone": "中性",
+    "safety": "safe",
+    "source": "BV1LUNs6LEc3"
+  },
+  {
+    "term": "钩子",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "常指钟馗二技能的控制钩",
+    "tone": "玩梗",
+    "safety": "safe",
+    "source": "BV1LUNs6LEc3"
+  },
+  {
+    "term": "ok",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "雷军《Are You OK》鬼畜梗接龙",
+    "tone": "玩梗",
+    "safety": "safe",
+    "source": "BV1g9bU6aEoi"
+  },
+  {
+    "term": "arey",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "“Are You OK”空耳碎片，弹幕接唱",
+    "tone": "玩梗",
+    "safety": "safe",
+    "source": "BV1g9bU6aEoi"
+  },
+  {
+    "term": "虾仁",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "谐音“杀人”，黑帮/狂飙二创刷梗",
+    "tone": "玩梗",
+    "safety": "safe",
+    "source": "BV1g9bU6aEoi"
+  },
+  {
+    "term": "大哥",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "指强力或开挂玩家/视频主角",
+    "tone": "玩梗",
+    "safety": "safe",
+    "source": "BV1J9tT6tEZc"
+  },
+  {
+    "term": "绿弹",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "游戏内绿色子弹/特殊弹药黑话",
+    "tone": "中性",
+    "safety": "safe",
+    "source": "BV1J9tT6tEZc"
+  },
+  {
+    "term": "手感",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "操作射击状态与流畅度",
+    "tone": "中性",
+    "safety": "safe",
+    "source": "BV1J9tT6tEZc"
+  },
+  {
+    "term": "对面",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "敌方队伍或对手",
+    "tone": "中性",
+    "safety": "safe",
+    "source": "BV1J9tT6tEZc"
+  },
+  {
+    "term": "符瑶",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "视频相关人物/主播名",
+    "tone": "中性",
+    "safety": "safe",
+    "source": "BV1tduo6eE43"
+  },
+  {
+    "term": "符符",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "对符瑶的昵称",
+    "tone": "中性",
+    "safety": "safe",
+    "source": "BV1tduo6eE43"
+  },
+  {
+    "term": "是男",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "性别调侃梗，常接“并非”",
+    "tone": "玩梗",
+    "safety": "safe",
+    "source": "BV1tduo6eE43"
+  },
+  {
+    "term": "素材",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "可剪进视频的搞笑/高能片段",
+    "tone": "吐槽",
+    "safety": "safe",
+    "source": "BV1tduo6eE43"
+  },
+  {
+    "term": "大宝",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "三国杀界徐盛的黑话外号",
+    "tone": "玩梗",
+    "safety": "safe",
+    "source": "BV1nMJ96KEtr"
+  },
+  {
+    "term": "戏子",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "三国杀武将戏志才的昵称",
+    "tone": "玩梗",
+    "safety": "safe",
+    "source": "BV1nMJ96KEtr"
+  },
+  {
+    "term": "ak",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "三国杀诸葛连弩的别称",
+    "tone": "中性",
+    "safety": "safe",
+    "source": "BV1nMJ96KEtr"
+  },
+  {
+    "term": "地主",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "斗地主模式中占先手优势的一方",
+    "tone": "中性",
+    "safety": "safe",
+    "source": "BV1nMJ96KEtr"
+  },
+  {
+    "term": "蒙恬",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "王者荣耀英雄",
+    "tone": "中性",
+    "safety": "safe",
+    "source": "BV1Kf7k6yETQ"
+  },
+  {
+    "term": "曹贼",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "对曹操的戏称或黑称",
+    "tone": "玩梗",
+    "safety": "safe",
+    "source": "BV1Kf7k6yETQ"
+  },
+  {
+    "term": "三弟",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "结义梗中刘备称张飞",
+    "tone": "玩梗",
+    "safety": "safe",
+    "source": "BV1Kf7k6yETQ"
+  },
+  {
+    "term": "概念神",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "被弹幕神化的抽象概念或角色",
+    "tone": "玩梗",
+    "safety": "safe",
+    "source": "BV16Q896wEJF"
+  },
+  {
+    "term": "绯红之王",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "JOJO替身名，能预知并删除时间",
+    "tone": "玩梗",
+    "safety": "safe",
+    "source": "BV16Q896wEJF"
+  },
+  {
+    "term": "是挂",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "质疑对方开挂作弊",
+    "tone": "吐槽",
+    "safety": "mild",
+    "source": "BV1CK8Y6GE5Z"
+  },
+  {
+    "term": "本质高手",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "反讽开挂者其实有技术",
+    "tone": "玩梗",
+    "safety": "mild",
+    "source": "BV1CK8Y6GE5Z"
+  },
+  {
+    "term": "老板",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "挂车金主或游戏内付费玩家",
+    "tone": "中性",
+    "safety": "safe",
+    "source": "BV1CK8Y6GE5Z"
+  },
+  {
+    "term": "bug",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "游戏漏洞或异常现象",
+    "tone": "中性",
+    "safety": "safe",
+    "source": "BV1CK8Y6GE5Z"
+  },
+  {
+    "term": "鲁班",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "王者荣耀射手鲁班七号",
+    "tone": "中性",
+    "safety": "safe",
+    "source": "BV1KZYU6eEnX"
+  },
+  {
+    "term": "张飞",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "王者荣耀坦克英雄",
+    "tone": "中性",
+    "safety": "safe",
+    "source": "BV1KZYU6eEnX"
+  },
+  {
+    "term": "int",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "编程整数类型，调侃血量数值",
+    "tone": "玩梗",
+    "safety": "safe",
+    "source": "BV1KZYU6eEnX"
+  },
+  {
+    "term": "char",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "编程字符类型，常与int并提玩梗",
+    "tone": "玩梗",
+    "safety": "safe",
+    "source": "BV1KZYU6eEnX"
+  },
+  {
+    "term": "关羽",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "王者荣耀英雄，弹幕常提",
+    "tone": "中性",
+    "safety": "safe",
+    "source": "BV1PhRMBiEX3"
+  },
+  {
+    "term": "女娲",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "王者荣耀英雄，弹幕常提",
+    "tone": "中性",
+    "safety": "safe",
+    "source": "BV1PhRMBiEX3"
+  },
+  {
+    "term": "上道",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "懂行、给面子，弹幕黑话",
+    "tone": "玩梗",
+    "safety": "safe",
+    "source": "BV1PhRMBiEX3"
+  },
+  {
+    "term": "嘎子",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "网红谢孟伟，直播带货争议人物",
+    "tone": "玩梗",
+    "safety": "safe",
+    "source": "BV1MA9vB2Ee4"
+  },
+  {
+    "term": "虎哥",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "抽象文化网红，口头禅整活",
+    "tone": "玩梗",
+    "safety": "mild",
+    "source": "BV1MA9vB2Ee4"
+  },
+  {
+    "term": "绷住",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "绷不住了，忍不住笑或破防",
+    "tone": "吐槽",
+    "safety": "safe",
+    "source": "BV1MA9vB2Ee4"
+  },
+  {
+    "term": "乡土中国",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "费孝通社会学著作，常析乡土社会",
+    "tone": "中性",
+    "safety": "safe",
+    "source": "BV1MA9vB2Ee4"
+  },
+  {
+    "term": "空军",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "钓鱼圈指没钓到鱼",
+    "tone": "吐槽",
+    "safety": "safe",
+    "source": "BV1Z4YZ61E8K"
+  },
+  {
+    "term": "空军一号",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "调侃多次空军或空军升级版",
+    "tone": "玩梗",
+    "safety": "safe",
+    "source": "BV1Z4YZ61E8K"
+  },
+  {
+    "term": "妈祖",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "海神，弹幕常刷求出海平安",
+    "tone": "玩梗",
+    "safety": "safe",
+    "source": "BV1Z4YZ61E8K"
+  },
+  {
+    "term": "风浪越大",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "《狂飙》台词，常接“鱼越贵”",
+    "tone": "玩梗",
+    "safety": "safe",
+    "source": "BV1Z4YZ61E8K"
+  },
+  {
+    "term": "曹昂",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "三国杀武将，曹操长子",
+    "tone": "中性",
+    "safety": "safe",
+    "source": "BV1zfVX6SExx"
+  },
+  {
+    "term": "老沙",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "沙摩柯昵称，三国杀武将",
+    "tone": "玩梗",
+    "safety": "safe",
+    "source": "BV1zfVX6SExx"
+  },
+  {
+    "term": "主公快",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "曹昂阵亡台词“主公快走”省略",
+    "tone": "玩梗",
+    "safety": "safe",
+    "source": "BV1zfVX6SExx"
+  },
+  {
+    "term": "炸鱼",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "低分段虐菜",
+    "tone": "吐槽",
+    "safety": "safe",
+    "source": "BV1Jbnb6BEX1"
+  },
+  {
+    "term": "吸血刀",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "王者荣耀吸血装备",
+    "tone": "中性",
+    "safety": "safe",
+    "source": "BV1Jbnb6BEX1"
+  },
+  {
+    "term": "干将",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "王者荣耀英雄干将莫邪",
+    "tone": "中性",
+    "safety": "safe",
+    "source": "BV1Jbnb6BEX1"
+  },
+  {
+    "term": "叛变了",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "角色倒戈反水玩梗",
+    "tone": "玩梗",
+    "safety": "safe",
+    "source": "BV1Jbnb6BEX1"
+  },
+  {
+    "term": "八戒",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "王者荣耀英雄猪八戒",
+    "tone": "中性",
+    "safety": "safe",
+    "source": "BV1h9th6yETk"
+  },
+  {
+    "term": "马超",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "王者荣耀英雄",
+    "tone": "中性",
+    "safety": "safe",
+    "source": "BV1h9th6yETk"
+  },
+  {
+    "term": "婉儿",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "王者荣耀英雄上官婉儿",
+    "tone": "中性",
+    "safety": "safe",
+    "source": "BV1h9th6yETk"
+  },
+  {
+    "term": "打野",
+    "aliases": [],
+    "cat": "弹幕梗",
+    "meaning": "王者荣耀位置术语",
+    "tone": "中性",
+    "safety": "safe",
+    "source": "BV1h9th6yETk"
+  }
+]

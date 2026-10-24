@@ -1,0 +1,4 @@
+name: proactive_dm
+desc: 只对指定 QQ 的私聊主动搭话（AstrBot 内置主动回复只支持群聊）
+author: local
+version: 1.0.0

@@ -1,0 +1,4 @@
+name: sticker_sender
+desc: 按回复情绪从本地素材库配一张表情包，独立成一条消息发送
+author: local
+version: 1.0.0

@@ -1,0 +1,4 @@
+name: group_memory
+desc: 群聊记忆（人物卡 + 滚动摘要 + 她上一句），省 token 且记得住人
+author: local
+version: 1.0.0

@@ -1,0 +1,4 @@
+name: feedback_learner
+desc: 从主人指令里抽规则并持续生效（/规则 /学 /删规则 /学状态）
+author: local
+version: 1.0.0
