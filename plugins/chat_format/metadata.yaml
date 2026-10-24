@@ -1,0 +1,4 @@
+name: chat_format
+desc: 聊天格式规整（把空行压成单换行，避免分段回复切不开）
+author: local
+version: 1.0.0
