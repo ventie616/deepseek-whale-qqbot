@@ -51,19 +51,22 @@ class Main(star.Star):
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def collect(self, event: AstrMessageEvent) -> None:
         try:
-            if event.get_message_type().name != "GROUP_MESSAGE":
-                return
+            mtype = event.get_message_type().name
         except Exception:
+            return
+        is_group = mtype == "GROUP_MESSAGE"
+        is_private = mtype == "FRIEND_MESSAGE"
+        if not (is_group or is_private):
             return
         umo = event.unified_msg_origin
         text = (event.get_message_str() or "").strip()
         if not text:
             return
         uid = str(event.get_sender_id() or "")
-        name = event.get_sender_name() or uid
+        name = (event.get_sender_name() or uid) if is_group else "主人"
 
         members = self.state.setdefault("members", {}).setdefault(umo, {})
-        if uid:
+        if uid and is_group:
             card = members.setdefault(uid, {"name": name, "aliases": [], "notes": [], "count": 0, "last": 0})
             card["name"] = name
             card["count"] = int(card.get("count", 0)) + 1
@@ -82,7 +85,7 @@ class Main(star.Star):
     @filter.on_decorating_result()
     async def note_reply(self, event: AstrMessageEvent) -> None:
         try:
-            if event.get_message_type().name != "GROUP_MESSAGE":
+            if event.get_message_type().name not in ("GROUP_MESSAGE", "FRIEND_MESSAGE"):
                 return
             result = event.get_result()
             if result is None or not result.chain:
@@ -106,7 +109,7 @@ class Main(star.Star):
             old = (self.state.get("summary", {}).get(umo) or {}).get("text", "")
             prompt = (
                 (f"上一段摘要：{old}\n\n" if old else "")
-                + "群聊记录：\n"
+                + "聊天记录：\n"
                 + "\n".join(buf[-SUMMARY_EVERY:])
                 + f"\n\n输出两段，逐行，不要编号、不要解释：\n"
                 f"摘要：<不超过 {SUMMARY_MAX_CHARS} 字，讲清在聊什么、谁对谁说了什么关键的、有没有冲突或梗，第三人称>\n"
@@ -116,7 +119,7 @@ class Main(star.Star):
             )
             resp = await provider.text_chat(
                 prompt=prompt,
-                system_prompt="你在做群聊摘要，只输出一段话，不解释。",
+                system_prompt="你在做聊天摘要，只输出一段话，不解释。",
             )
             raw = (resp.completion_text or "").strip()
             summary_text = ""
@@ -170,11 +173,41 @@ class Main(star.Star):
 
     # ---------------- 注入 ----------------
     @filter.on_llm_request()
+    async def _inject_private(self, event: AstrMessageEvent, req) -> None:
+        """私聊记忆：最近聊过什么 + 她上一句 → 跨会话也接得上。"""
+        umo = event.unified_msg_origin
+        summary = (self.state.get("summary") or {}).get(umo) or {}
+        last = (self.state.get("last_reply") or {}).get(umo)
+        buf = (self.state.get("buffer") or {}).get(umo) or []
+        lines = []
+        if summary.get("text"):
+            lines.append(f"【你们最近聊过】{summary['text']}")
+        if last:
+            lines.append(f"【你上一句说的】{last}")
+        if buf:
+            recent = " / ".join(
+                b.split("：", 1)[-1].split(":", 1)[-1].strip()[:30] for b in buf[-3:]
+            )
+            lines.append(f"【主人最近说的】{recent}")
+        if not lines:
+            return
+        req.system_prompt += (
+            "\n\n" + "\n".join(lines)
+            + "\n（这是你和主人的私聊记忆：接得上就别说「你怎么了」，也别把记忆原样背出来。）"
+        )
+        logger.info(
+            f"[group_memory] 私聊注入：摘要{bool(summary.get('text'))} 上句{bool(last)}"
+        )
+
     async def inject_memory(self, event: AstrMessageEvent, req) -> None:
         try:
-            if event.get_message_type().name != "GROUP_MESSAGE":
-                return
+            mtype = event.get_message_type().name
         except Exception:
+            return
+        if mtype == "FRIEND_MESSAGE":
+            await self._inject_private(event, req)
+            return
+        if mtype != "GROUP_MESSAGE":
             return
         umo = event.unified_msg_origin
         text = event.get_message_str() or ""
