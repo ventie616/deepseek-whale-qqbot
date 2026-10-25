@@ -44,7 +44,7 @@ def main() -> int:
         print("git ls-files 为空，先确认在仓库根目录")
         return 1
 
-    bad = [f for f in files if f.startswith(".git") or "/.git" in f]
+    bad = [f for f in files if f == ".git" or f.startswith(".git/") or "/.git/" in f]
     if bad:
         print("⚠️ 跟踪列表里出现 .git 文件，停止")
         return 1
