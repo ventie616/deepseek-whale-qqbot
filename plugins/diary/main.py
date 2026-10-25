@@ -35,7 +35,7 @@ PUSH_CFG = ROOT / "bili_push.json"
 TRIGGER = ROOT / "diary_trigger.json"
 RESULT = ROOT / "diary_trigger_result.json"
 
-MAX_CHARS = 420
+MAX_CHARS = 560
 WRITE_HOUR = 22          # 22 点后才写当天的
 SAMPLE_MSGS = 8
 
@@ -65,30 +65,24 @@ def _persona() -> str:
         return "你是鲸鱼娘，一只住在主人电脑里的鲸鱼女儿。"
 
 
+def _sample(items: list[tuple], n: int) -> list[tuple]:
+    """全天均匀取样，保留首尾，避免只看最后几句。"""
+    if len(items) <= n:
+        return items
+    step = len(items) / n
+    picked = [items[min(int(i * step), len(items) - 1)] for i in range(n)]
+    picked[-1] = items[-1]
+    return picked
+
+
 def _day_events(day: str) -> str:
+    """素材：私聊是主体，B站 和群聊只当背景。"""
     parts = [f"【日期】{day}"]
 
     mood = _load_json(MOOD, {})
     if str(mood.get("date")) == day:
         parts.append(f"【今天的心情】{mood.get('mood')}：{mood.get('note')}")
 
-    acts = []
-    if ACTIVITY.exists():
-        for line in ACTIVITY.read_text(encoding="utf-8", errors="replace").splitlines():
-            if not line.strip():
-                continue
-            try:
-                a = json.loads(line)
-            except Exception:
-                continue
-            if str(a.get("t"))[:10] != day:
-                continue
-            if a.get("kind") == "comment":
-                acts.append(f"在《{str(a.get('title'))[:20]}》下评论：{str(a.get('text'))[:40]}")
-        if acts:
-            parts.append("【今天刷B站】\n" + "\n".join(f"- {x}" for x in acts[-3:]))
-
-    # 聊天取样：优先私聊（跟主人），再补一两句她在群里的回复
     private: list[tuple[str, str, str]] = []
     group: list[tuple[str, str, str]] = []
     if ARCHIVE.exists():
@@ -106,21 +100,44 @@ def _day_events(day: str) -> str:
                     r = json.loads(line)
                 except Exception:
                     continue
-                who = "你" if r.get("role") == "bot" else str(r.get("name") or "他")
+                who = "你" if r.get("role") == "bot" else "他"
                 text = str(r.get("text") or "").replace("\n", " ").strip()
-                if text:
-                    bucket.append((str(r.get("t"))[11:16], who, text[:30]))
+                # 跳过 B站 归档行（"[B站评论] …" / "[B站] …"），那不是聊天
+                if text and not text.startswith("[B站"):
+                    bucket.append((str(r.get("t"))[11:16], who, text[:34]))
     private.sort(key=lambda x: x[0])
     group.sort(key=lambda x: x[0])
 
-    rows = private[-6:]
+    # 主体：私聊，全天取样
+    if private:
+        picked = _sample(private, 16)
+        parts.append("【今天和主人的对话（按时间，主体素材）】\n"
+                     + "\n".join(f"{tm} {w}：{x}" for tm, w, x in picked))
+    else:
+        parts.append("【今天和主人的对话】没有记录")
+
+    # 背景：她在群里说的话（最多两句）
     her_group = [x for x in group if x[1] == "你"][-2:]
     if her_group:
-        rows = rows + her_group
-    if rows:
-        rows.sort(key=lambda x: x[0])
-        parts.append("【今天聊过的（他对你说、你回他的话）】\n"
-                     + "\n".join(f"{tm} {w}：{x}" for tm, w, x in rows))
+        parts.append("【背景：你在群里说过的话】\n"
+                     + "\n".join(f"{tm}：{x}" for tm, _, x in her_group))
+
+    # 背景：B站（最多两条，只给标题和一句话）
+    acts = []
+    if ACTIVITY.exists():
+        for line in ACTIVITY.read_text(encoding="utf-8", errors="replace").splitlines():
+            if not line.strip():
+                continue
+            try:
+                a = json.loads(line)
+            except Exception:
+                continue
+            if str(a.get("t"))[:10] != day:
+                continue
+            if a.get("kind") == "comment":
+                acts.append(f"《{str(a.get('title'))[:18]}》")
+        if acts:
+            parts.append("【背景：今天刷B站评论过的视频】\n" + "、".join(acts[-2:]))
 
     return "\n\n".join(parts)
 
@@ -192,12 +209,15 @@ class Main(star.Star):
         style = _recent_entries(2)
         system = _persona() + """
 
-【现在你要写今天的日记】
-- 用你自己的口吻，第一人称，**至少三句**，写到 80~150 字
-- 三句大致cover：今天刷到了什么 / 跟主人聊了什么 / 你当时什么感觉
-- 要具体：提到具体的视频、具体的对话、具体的情绪
-- 不要标题、不要列点、不要"今天真是充实的一天"这类空话
-- 想不出什么就少写点，但别编
+【今天你要写自己的日记，重点不是流水账】
+- 主体是今天和主人之间发生的事：他说了什么、你怎么回的、当时什么反应
+- 必须写清两件事：
+  1) 行为逻辑：你为什么那样说/那样做（别只复述过程）
+  2) 情感变化：今天心情怎么走的——早上怎样、中间什么时候被触动或别扭、晚上怎样
+- B站 和群聊只是背景，用得上就带一句，用不上就不提
+- 4~6 句，120~220 字，第一人称，口语
+- 不要标题、不要列点、不要"今天真是充实的一天"这种总结腔
+- 想不出什么就少写，别编
 - 只输出日记正文，不要解释"""
 
         if style:
@@ -217,10 +237,10 @@ class Main(star.Star):
         except Exception as exc:  # noqa: BLE001
             logger.info(f"[diary] 生成失败：{exc}")
             return False, f"生成失败：{exc}"
-        if text and len(text) < 40:
+        if text and len(text) < 80:
             # 太短就再要一次，明确要求多写点
             try:
-                retry = await self._compose(day, nudge="上一版太短了，这次至少三句，写满一点。")
+                retry = await self._compose(day, nudge="上一版太短了：这次写满 4~6 句，重点写清你的行为逻辑和心情变化。")
                 if len(retry) > len(text):
                     text = retry
             except Exception:
