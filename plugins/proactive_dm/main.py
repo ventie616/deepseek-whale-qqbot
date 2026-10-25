@@ -20,6 +20,16 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+import sys
+from pathlib import Path as _Path
+
+sys.path.insert(0, str(_Path(r"C:\QQBot\tools")))
+try:
+    from textnorm import fix_punct as _fix_punct  # noqa: E402
+except Exception:
+    def _fix_punct(x):
+        return x
+
 from astrbot.api import logger, star
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.message_components import Plain
@@ -270,6 +280,7 @@ class Main(star.Star):
         if not umo:
             return False, "找不到 aiocqhttp 平台"
         text = await self._compose(kind)
+        text = _fix_punct(text, split_long_lines=False)   # 主动消息不走回复管线，补标点但不拆行
         if not text:
             return False, "没生成出来"
         try:

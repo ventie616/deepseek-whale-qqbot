@@ -15,12 +15,23 @@ from __future__ import annotations
 
 import re
 
+import sys
+from pathlib import Path as _Path
+
+sys.path.insert(0, str(_Path(r"C:\QQBot\tools")))
+try:
+    from textnorm import fix_punct as _shared_fix  # noqa: E402
+except Exception:
+    _shared_fix = None
+
 from astrbot.api import logger, star
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.message_components import Plain
 
 
 def fix_punct(text: str) -> str:
+    if _shared_fix is not None:
+        return _shared_fix(text)
     s = text
     # 1) 半角标点 -> 全角（数字之间的 1,000 / 3.14 不动）
     s = re.sub(r"(?<!\d),(?!\d)", "，", s)
