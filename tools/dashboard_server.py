@@ -32,12 +32,16 @@ import threading
 import time
 from datetime import date, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import urllib.request
 from urllib.parse import parse_qs, urlparse
 
 ROOT = pathlib.Path(r"C:\QQBot")
 DASH = ROOT / "dashboard" / "index.html"
 TOKEN_FILE = ROOT / "dashboard" / ".token"
+TRIGGER = ROOT / "bili_trigger.json"
+TRIGGER_RESULT = ROOT / "bili_trigger_result.json"
 TOKEN = ""
+LAST_BRUSH: dict = {}
 
 BILI_KEYS = {
     "enabled", "mode", "interval_minutes", "jitter_minutes", "active_hours",
@@ -141,6 +145,41 @@ def status() -> dict:
     }
 
 
+def onebot_token() -> str:
+    try:
+        cfg = json.loads((ROOT / "snowluma" / "config" / "onebot.json").read_text(encoding="utf-8"))
+        for s in (cfg.get("networks") or {}).get("httpServers") or []:
+            if s.get("accessToken"):
+                return str(s["accessToken"])
+    except Exception:
+        pass
+    try:
+        return (ROOT / "token.txt").read_text(encoding="utf-8").strip()
+    except Exception:
+        return ""
+
+
+def send_qq(text: str) -> dict:
+    """走 OneBot HTTP 直接发一条私聊，验证通道是否通。"""
+    push = read_json(ROOT / "bili_push.json", {}) or {}
+    qq = str(push.get("target_qq") or "").strip()
+    token = onebot_token()
+    if not qq:
+        return {"ok": False, "error": "bili_push.json 里没有 target_qq"}
+    payload = json.dumps({"user_id": int(qq), "message": [{"type": "text", "data": {"text": text}}]}).encode()
+    req = urllib.request.Request(
+        "http://127.0.0.1:3000/send_private_msg",
+        data=payload,
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            d = json.loads(r.read())
+        return {"ok": d.get("status") == "ok" or d.get("retcode") == 0, "raw": d}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "WhaleConsole/1.0"
 
@@ -210,6 +249,23 @@ class Handler(BaseHTTPRequestHandler):
             clean = [re.sub(r"\x1b\[[0-9;]*m", "", x) for x in text]
             self._json({"ok": True, "file": str(fp), "text": "\n".join(clean)})
             return
+        if path == "/api/action/brush":
+            q = parse_qs(u.query)
+            want = (q.get("id") or [""])[0]
+            res = read_json(TRIGGER_RESULT, {}) or {}
+            if not res:
+                # 刚触发、插件还没写 running：给它 10 分钟窗口
+                if want and LAST_BRUSH.get("id") == want and time.time() - LAST_BRUSH.get("at", 0) < 600:
+                    self._json({"state": "starting", "pending": TRIGGER.exists()})
+                else:
+                    self._json({"state": "idle"})
+                return
+            if want and str(res.get("id")) != want:
+                self._json({"state": "stale", "result": res})
+                return
+            self._json({"state": res.get("state") or "idle", "result": res,
+                        "pending": TRIGGER.exists()})
+            return
         if path == "/api/report":
             q = parse_qs(u.query)
             day = (q.get("date") or [date.today().isoformat()])[0]
@@ -273,6 +329,23 @@ class Handler(BaseHTTPRequestHandler):
             data["rules"] = [r for r in (data.get("rules") or []) if r.get("id") != rid]
             self._json({"ok": write_json(ROOT / "learned_rules.json", data),
                         "removed": before - len(data["rules"])})
+            return
+
+        if u.path == "/api/action/brush":
+            mode = str(body.get("mode") or "dry")
+            if mode not in ("dry", "auto", "dm"):
+                mode = "dry"
+            tid = str(int(time.time()))
+            TRIGGER_RESULT.unlink(missing_ok=True)
+            LAST_BRUSH["id"] = tid
+            LAST_BRUSH["at"] = time.time()
+            write_json(TRIGGER, {"id": tid, "mode": mode, "at": datetime.now().isoformat(timespec="seconds")})
+            self._json({"ok": True, "id": tid, "mode": mode})
+            return
+
+        if u.path == "/api/action/testmsg":
+            text = str(body.get("text") or "").strip() or "通道测试：能收到就是通的"
+            self._json(send_qq(text))
             return
 
         if u.path == "/api/service":

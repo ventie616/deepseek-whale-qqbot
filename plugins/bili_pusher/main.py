@@ -37,6 +37,8 @@ CONFIG_PATH = Path(r"C:\QQBot\bili_push.json")
 STATE_PATH = Path(r"C:\QQBot\bili_push_state.json")
 REPORT_DIR = Path(r"C:\QQBot\reports")
 ACTIVITY_PATH = Path(r"C:\QQBot\bili_activity.jsonl")
+TRIGGER_PATH = Path(r"C:\QQBot\bili_trigger.json")
+TRIGGER_RESULT = Path(r"C:\QQBot\bili_trigger_result.json")
 CHAT_ARCHIVE = Path(r"C:\QQBot\chat_archive")
 MEMORY_PATH = Path(r"C:\QQBot\bili_memory.json")
 WATCH_LOG = Path(r"C:\QQBot\bili_watched.jsonl")
@@ -203,6 +205,50 @@ class Main(star.Star):
         self._login_loaded = False
 
     # ---------------- 生命周期 ----------------
+    # ---------------- 外部触发（控制台按钮） ----------------
+    async def _watch_trigger(self) -> None:
+        """控制台写 bili_trigger.json，这里收到就跑一轮，结果写 bili_trigger_result.json。"""
+        await asyncio.sleep(8)
+        while not self._stop:
+            try:
+                if TRIGGER_PATH.exists():
+                    try:
+                        req = json.loads(TRIGGER_PATH.read_text(encoding="utf-8"))
+                    except Exception:
+                        req = {}
+                    TRIGGER_PATH.unlink(missing_ok=True)
+                    tid = str(req.get("id") or "")
+                    mode = str(req.get("mode") or "dry")
+                    if mode not in ("dry", "auto", "bili_comment", "dm"):
+                        mode = "dry"
+                    logger.info(f"[bili_pusher] 控制台触发：跑一轮（{mode}）")
+                    TRIGGER_RESULT.write_text(
+                        json.dumps({"id": tid, "state": "running", "mode": mode}, ensure_ascii=False),
+                        encoding="utf-8",
+                    )
+                    started = time.time()
+                    try:
+                        ok, msg = await self._push_once(force_mode=mode, force_window=True)
+                    except Exception as exc:  # noqa: BLE001
+                        ok, msg = False, f"异常：{type(exc).__name__} {exc}"
+                    TRIGGER_RESULT.write_text(
+                        json.dumps(
+                            {
+                                "id": tid,
+                                "state": "done",
+                                "mode": mode,
+                                "ok": bool(ok),
+                                "msg": str(msg)[:300],
+                                "seconds": round(time.time() - started, 1),
+                            },
+                            ensure_ascii=False,
+                        ),
+                        encoding="utf-8",
+                    )
+            except Exception as exc:  # noqa: BLE001
+                logger.info(f"[bili_pusher] 触发器异常：{exc}")
+            await asyncio.sleep(5)
+
     async def initialize(self) -> None:
         if not self.cfg.get("enabled", False):
             logger.info("[bili_pusher] 未启用（bili_push.json enabled=false）")
@@ -215,11 +261,13 @@ class Main(star.Star):
         if mode in ("auto", "bili_comment") and not self.cfg.get("bili_at_name"):
             logger.warning("[bili_pusher] 还没配 bili_at_name，评论里不会有 @")
         self._task = asyncio.create_task(self._loop())
+        self._trigger_task = asyncio.create_task(self._watch_trigger())
 
     async def terminate(self) -> None:
         self._stop = True
-        if self._task:
-            self._task.cancel()
+        for task in (getattr(self, "_task", None), getattr(self, "_trigger_task", None)):
+            if task:
+                task.cancel()
 
     # ---------------- HTTP ----------------
     def _fast_provider(self):

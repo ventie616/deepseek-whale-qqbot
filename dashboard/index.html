@@ -121,6 +121,12 @@
     <button onclick="openURL('http://127.0.0.1:6185')">AstrBot 面板</button>
     <button onclick="openURL('http://127.0.0.1:5099')">SnowLuma 面板</button>
   </div>
+  <div class="btns" style="margin-top:10px">
+    <button class="primary" onclick="brush('auto')">马上刷一轮（真发评论）</button>
+    <button onclick="brush('dry')">刷一轮预览（不发）</button>
+    <button onclick="testMsg()">发一条测试消息</button>
+  </div>
+  <pre id="action" style="display:none"></pre>
 </div>
 
 <h2>她学到的规则</h2>
@@ -302,6 +308,38 @@ async function showReport() {
   const el = $("report");
   el.style.display = "block";
   el.textContent = r.text || "（没有）";
+}
+
+async function brush(mode) {
+  const el = $("action");
+  el.style.display = "block";
+  el.textContent = mode === "dry" ? "正在跑一轮预览（不发布）…" : "正在跑一轮（会真发评论）…";
+  const r = await api("/api/action/brush", { method: "POST", body: JSON.stringify({ mode }) });
+  if (!r.ok) { el.textContent = "启动失败：" + (r.error || ""); return; }
+  const id = r.id;
+  let tries = 0;
+  const timer = setInterval(async () => {
+    tries++;
+    const s = await api(`/api/action/brush?id=${id}`);
+    if (s.state === "running" || s.state === "starting" || (s.state === "idle" && s.pending)) {
+      el.textContent = `进行中…（${tries * 2}s）` + (s.result && s.result.msg ? "\n" + s.result.msg : "");
+      if (tries > 300) { clearInterval(timer); el.textContent += "\n超时（10 分钟）"; }
+      return;
+    }
+    clearInterval(timer);
+    const res = s.result || {};
+    el.textContent = (res.ok ? "✅ " : "❌ ") + (res.msg || s.state) +
+      (res.seconds ? `\n耗时 ${res.seconds}s` : "");
+    loadAll();
+  }, 2000);
+}
+
+async function testMsg() {
+  const r = await api("/api/action/testmsg", {
+    method: "POST",
+    body: JSON.stringify({ text: "控制台测试：能收到就说明 QQ 通道正常" }),
+  });
+  toast(r.ok ? "已发出，看手机" : "发送失败：" + (r.error || ""));
 }
 
 loadAll();
