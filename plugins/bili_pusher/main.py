@@ -1412,40 +1412,69 @@ class Main(star.Star):
             return []
 
     # ---------------- QQ 通知：按话题分层 ----------------
-    def _layer_texts(self, video: dict, comment: str, note: str = "") -> list[str]:
-        """用她自己的口吻说：今天刷到什么 / 感觉有意思 / 是关于什么。
+    SUMMON_WORDS = ("你来看", "陪你", "来看嘛", "你陪", "过来看", "来看看", "快来看",
+                    "你瞅", "不来看", "来看一眼", "你陪我")
+    EMO_WORDS = ("软", "笑", "喜欢", "心动", "可爱", "入迷", "好看", "上头", "有意思",
+                 "破防", "馋", "感动", "戳", "乐", "揪心", "好奇", "入戏")
 
-        默认只发前两层（qq_layers=2）：
-          1) 今天刷到个《标题》，20 分钟
-          2) 看着挺有意思的，讲的是〈话题〉，<原因>
+    @classmethod
+    def _split_comment(cls, comment: str) -> tuple[str, str]:
+        """把她写的评论拆成：内容概括 / 为什么感兴趣。"""
+        text = (comment or "").strip()
+        if not text:
+            return "", ""
+        parts = [x.strip() for x in re.split(r"[，。！？]", text) if x.strip()]
+        summary, idx = [], 0
+        for i, part in enumerate(parts):
+            idx = i
+            if any(w in part for w in cls.SUMMON_WORDS) or any(w in part for w in cls.EMO_WORDS):
+                break
+            summary.append(part)
+            if len("，".join(summary)) >= 24:
+                idx = i + 1
+                break
+        head = "，".join(summary) if summary else (parts[0] if parts else "")
+        head = re.sub(r"^(唔|嗯|诶|欸|哇|哦|真的|其实|就是|哎|唉|好家伙)[，,\s]*", "", head).strip()
+        head = head[:40]
+        # 对着主人说的（带"你"、带问句）不算"我为什么感兴趣"
+        rest = [
+            p for p in parts[idx:]
+            if not any(w in p for w in cls.SUMMON_WORDS)
+            and "你" not in p
+            and not re.search(r"(吗|呢|嘛|吧)$", p)
+        ]
+        reaction = ""
+        for r in rest:
+            if any(w in r for w in cls.EMO_WORDS):
+                reaction = r
+                break
+        if not reaction and rest:
+            reaction = rest[0]
+        return head, reaction
+
+    def _layer_texts(self, video: dict, comment: str, note: str = "") -> list[str]:
+        """推 QQ 用的两句：今天看了什么（概括）/ 为什么感兴趣。
+
+        链接不主动发；他追问时她再给（bvid 记在记忆里，见 _append_memory）。
         """
         title = str(video.get("title") or "").strip()
         core = title.strip().strip("《》").strip()[:36] or "一个视频"
-        dur = int(video.get("duration") or 0)
         why = str(video.get("worth_reason") or "").strip()
         bvid = str(video.get("bvid") or "")
 
-        first = f"今天刷到个《{core}》"
-        if dur >= 300:
-            first += f"，{dur // 60} 分钟"
+        head, reaction = self._split_comment(comment)
+        if not head:
+            content = str(video.get("content") or "").strip()
+            head = content[:40] if content else core
 
-        # 把"游戏吐槽有笑点"拆成 话题=游戏吐槽 / 原因=有笑点
-        topic, tail = why, ""
-        if why:
-            if "，" in why:
-                topic, tail = why.split("，", 1)
-            elif "有" in why and why.index("有") > 1:
-                k = why.index("有")
-                topic, tail = why[:k], why[k:]
-        if not topic:
-            topic = core[:18]
+        first = f"今天看了个视频，{head}"
 
-        if why:
-            second = f"看着挺有意思的，讲的是{topic}"
-            if tail:
-                second += f"，{tail}"
+        if reaction:
+            second = f"我觉得挺有意思的，{reaction}"
+        elif why:
+            second = f"我觉得挺有意思的，{why}"
         else:
-            second = f"看着挺有意思的，讲的是{topic}"
+            second = "我觉得挺有意思的，就是说不清哪儿对味"
 
         layers = [first, second]
         if comment:
@@ -1793,7 +1822,10 @@ class Main(star.Star):
         for r in recents:
             when = _when(r.get("ts")) if r.get("ts") else ""
             why = f"（{r['reason']}）" if r.get("reason") else ""
-            lines.append(f"- {_title(r)}UP:{r.get('up') or '?'}｜{when}看过没评论{why}")
+            lines.append(
+                f"- {_title(r)}UP:{r.get('up') or '?'}｜{when}看过没评论{why}"
+                + (f"｜{r.get('bvid')}" if r.get("bvid") else "")
+            )
         items = finals + recents
 
         # 最近跟主人的 B站 往来（含时间），补上"时间隔开后断片"的问题
