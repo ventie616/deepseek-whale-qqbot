@@ -1,0 +1,4 @@
+name: diary
+desc: 她自己写日记（每天 22 点后自动写一篇），/日记 /写日记；工具 write_diary / read_diary
+author: local
+version: 1.0.0

@@ -77,6 +77,18 @@ class Main(star.Star):
             json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
         )
 
+        # 日记目录（逐篇复制，带上日期）
+        diary = ROOT / "diary"
+        if diary.is_dir():
+            for f in sorted(diary.glob("*.md")):
+                try:
+                    shutil.copy2(f, dst / f"diary__{f.name}")
+                    copied.append({"file": f"diary/{f.name}", "label": "日记",
+                                   "kb": round(f.stat().st_size / 1024, 1)})
+                    total += f.stat().st_size
+                except OSError:
+                    continue
+
         # 清理过期
         cutoff = date.today() - timedelta(days=KEEP_DAYS)
         for d in sorted(BACKUP.iterdir()):
