@@ -270,6 +270,28 @@ class Main(star.Star):
                 task.cancel()
 
     # ---------------- HTTP ----------------
+    def _notify_gen_fail(self, reason: str) -> None:
+        """生成失败时提醒一次（每天最多一次），避免刷屏。"""
+        try:
+            state_path = Path(r"C:\QQBot\bili_gen_fail.json")
+            today = datetime.now().strftime("%Y-%m-%d")
+            try:
+                st = json.loads(state_path.read_text(encoding="utf-8"))
+            except Exception:
+                st = {}
+            if st.get("date") == today:
+                return
+            state_path.write_text(
+                json.dumps({"date": today, "reason": reason, "at": datetime.now().strftime("%H:%M")},
+                           ensure_ascii=False),
+                encoding="utf-8",
+            )
+            asyncio.create_task(
+                self._send_qq(f"{reason}。\n这轮没发评论——宁可不发，也不发机器话。")
+            )
+        except Exception:
+            pass
+
     async def _fast_provider(self):
         """刷 B 站/看图/抽梗用 flash（便宜快），聊天用默认的强模型。
 
@@ -526,10 +548,12 @@ class Main(star.Star):
                     return text[:90]
             except Exception as exc:  # noqa: BLE001
                 logger.warning(f"[bili_pusher] 文案生成失败：{exc}")
-        title = re.sub(r"[【】\[\]()（）《》]", "", str(video.get("title") or "")).strip()
-        title = title[:16] or "这个视频"
-        logger.warning(f"[bili_pusher] 评论生成失败，用兜底文案：{title}")
-        return self._fix_punct(f"哇，{title}，你来看看嘛")[:90]
+        # 生成失败就返回空串：宁可不评论，也不发机器味兜底
+        logger.warning(
+            f"[bili_pusher] 评论生成失败（3 次都没过），本轮跳过："
+            f"{str(video.get('title') or '')[:30]}"
+        )
+        return ""
 
     # ---------------- B 站评论 ----------------
     def _signed(self, base: str, params: dict) -> str:
@@ -1484,6 +1508,16 @@ class Main(star.Star):
             return False, f"这轮全跳过（{len(skipped)} 条都不值得占注意力）"
 
         text = await self._comment_text(video, umo)
+        if not text:
+            reason = "文案生成失败（已跳过，不兜底）"
+            logger.warning(f"[bili_pusher] {video['bvid']} {reason}")
+            skipped.append((video.get("title"), video.get("bvid"), reason))
+            await asyncio.to_thread(
+                self._write_report, video, "", video.get("worth_reason", ""), False, reason, skipped
+            )
+            self._record_watch(video, "跳过", reason)
+            self._notify_gen_fail(reason)
+            return False, f"{video['bvid']} {reason}"
         logger.info(f"[bili_pusher] 选中 {video['bvid']} 《{video['title'][:24]}》→ {text}")
 
         if mode == "dry":
