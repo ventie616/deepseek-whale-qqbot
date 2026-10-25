@@ -26,7 +26,8 @@
   .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; }
   .card h3 { margin:0 0 12px; font-size:14px; font-weight:600; }
   .row { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:9px 0; font-size:13px; }
-  .row label { color:var(--muted); }
+  .row label { color:var(--muted); white-space:nowrap; }
+  .row input.wide { flex:1; min-width:0; }
   input[type=number], input[type=text], select {
     background:transparent; color:var(--fg); border:1px solid var(--line); border-radius:8px;
     padding:5px 8px; font-size:13px; width:110px; font-family:inherit; }
@@ -121,11 +122,14 @@
     <h3>加歌</h3>
     <div class="row"><label>来源</label>
       <select id="a-mode" onchange="audioMode()">
+        <option value="url">网址 / 链接</option>
         <option value="bvid">B站 BV 号</option>
         <option value="file">本地音频</option>
       </select></div>
-    <div class="row" id="a-bv-row"><label>BV 号</label>
-      <input type="text" id="a-bvid" placeholder="BV1xxxxxxxxx"></div>
+    <div class="row" id="a-url-row"><label>链接</label>
+      <input type="text" id="a-url" class="wide" placeholder="https://www.bilibili.com/video/BV... 或 https://.../a.mp3"></div>
+    <div class="row" id="a-bv-row" style="display:none"><label>BV 号</label>
+      <input type="text" id="a-bvid" placeholder="BV1xxxxxxxxx / 也可以直接粘链接"></div>
     <div class="row" id="a-file-row" style="display:none"><label>选文件</label>
       <input type="file" id="a-file" accept="audio/*,video/*" style="width:auto"></div>
     <div class="row"><label>歌名（可选）</label>
@@ -370,6 +374,7 @@ async function loadAudio() {
 
 function audioMode() {
   const m = $("a-mode").value;
+  $("a-url-row").style.display = m === "url" ? "flex" : "none";
   $("a-bv-row").style.display = m === "bvid" ? "flex" : "none";
   $("a-file-row").style.display = m === "file" ? "flex" : "none";
 }
@@ -394,10 +399,20 @@ async function importAudio() {
   el.textContent = "准备中…";
 
   let payload;
-  if (mode === "bvid") {
+  if (mode === "url") {
+    const url = $("a-url").value.trim();
+    if (!/^https?:\/\//i.test(url)) { el.textContent = "网址要以 http(s):// 开头"; return; }
+    payload = { mode: "url", url, name };
+  } else if (mode === "bvid") {
     const bvid = $("a-bvid").value.trim();
-    if (!/^BV[0-9A-Za-z]{8,}$/.test(bvid)) { el.textContent = "BV 号看起来不对"; return; }
-    payload = { mode: "bvid", bvid, name };
+    if (/^https?:\/\//i.test(bvid)) {
+      payload = { mode: "url", url: bvid, name };
+    } else if (/^BV[0-9A-Za-z]{10}$/i.test(bvid) || /^av\d+$/i.test(bvid)) {
+      payload = { mode: "bvid", bvid, name };
+    } else {
+      el.textContent = "填 BV 号 / av 号 / 链接都行";
+      return;
+    }
   } else {
     const f = $("a-file").files[0];
     if (!f) { el.textContent = "还没选文件"; return; }

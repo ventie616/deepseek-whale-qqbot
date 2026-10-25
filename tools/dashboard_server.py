@@ -190,8 +190,14 @@ def run_import(job_id: str, mode: str, payload: dict) -> None:
         job["updated"] = time.time()
 
     try:
-        if mode == "bvid":
-            res = audio_lib.add_from_bvid(payload["bvid"], payload.get("name") or "", log=log)
+        if mode == "url":
+            res = audio_lib.add_from_url(payload["url"], payload.get("name") or "", log=log)
+        elif mode == "bvid":
+            text = str(payload.get("bvid") or "")
+            if text.startswith(("http://", "https://")):
+                res = audio_lib.add_from_url(text, payload.get("name") or "", log=log)
+            else:
+                res = audio_lib.add_from_bvid(text, payload.get("name") or "", log=log)
         else:
             src = pathlib.Path(payload["path"])
             res = audio_lib.add_audio(src, payload.get("name") or src.stem, log=log)
@@ -585,11 +591,14 @@ class Handler(BaseHTTPRequestHandler):
 
         if u.path == "/api/audio/import":
             mode = str(body.get("mode") or "bvid")
-            payload = body if mode == "bvid" else {
+            payload = body if mode in ("bvid", "url") else {
                 "path": body.get("path"), "name": body.get("name"), "cleanup": True,
             }
+            if mode == "url" and not str(body.get("url") or "").strip():
+                self._json({"ok": False, "error": "缺网址"}, 400)
+                return
             if mode == "bvid" and not str(body.get("bvid") or "").strip():
-                self._json({"ok": False, "error": "缺 BV 号"}, 400)
+                self._json({"ok": False, "error": "缺 BV 号或链接"}, 400)
                 return
             if mode == "file" and not payload.get("path"):
                 self._json({"ok": False, "error": "缺文件"}, 400)

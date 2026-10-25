@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import json
+import re
 import pathlib
 import shutil
 import subprocess
@@ -153,6 +154,101 @@ def add_audio(src: pathlib.Path, name: str, bvid: str = "", log=print) -> dict:
     return {"clips": len(picks), "full": str(full), "seconds": round(dur)}
 
 
+BV_RE = re.compile(r"(BV[0-9A-Za-z]{10})")
+AUDIO_EXT = {".mp3", ".m4a", ".wav", ".flac", ".aac", ".ogg", ".opus", ".mp4", ".webm"}
+
+
+def resolve_url(url: str, log=print) -> tuple[str, str]:
+    """把各种网址归一成 (kind, value)。kind = bvid / audio。"""
+    url = (url or "").strip()
+    if not url:
+        raise ValueError("空网址")
+    if url.startswith(("BV", "bv")):
+        m = BV_RE.search(url)
+        if m:
+            return "bvid", m.group(1)
+        raise ValueError("不像 BV 号")
+
+    # b23.tv 短链：跟一次跳转
+    if "b23.tv" in url or "bili2233.cn" in url:
+        log("解析短链…")
+        req = urllib.request.Request(url, headers={"User-Agent": UA})
+        try:
+            with urllib.request.urlopen(req, timeout=20) as r:
+                final = r.geturl()
+        except Exception as exc:  # noqa: BLE001
+            raise RuntimeError(f"短链解析失败：{exc}") from exc
+        log(f"跳转到 {final[:70]}")
+        url = final
+
+    m = BV_RE.search(url)
+    if m:
+        return "bvid", m.group(1)
+
+    am = re.search(r"/av(\d+)", url) or re.search(r"^av(\d+)$", url, re.I)
+    if am:
+        return "aid", am.group(1)
+
+    path = url.split("?")[0].split("#")[0].lower()
+    if any(path.endswith(ext) for ext in AUDIO_EXT):
+        return "audio", url
+
+    raise ValueError("看不懂这个网址（要 B站视频链接或音频直链）")
+
+
+def guess_name_from_url(url: str) -> str:
+    tail = url.split("?")[0].rstrip("/").rsplit("/", 1)[-1]
+    stem = tail.rsplit(".", 1)[0]
+    return urllib.parse.unquote(stem)[:40] or "未命名音频"
+
+
+def add_from_aid(aid: str, name: str = "", log=print) -> dict:
+    """av 号：先查 aid 拿到 bvid，再走正常流程。"""
+    hdr = {"User-Agent": UA, "Referer": "https://www.bilibili.com/", "Cookie": _cookie()}
+    req = urllib.request.Request(f"https://api.bilibili.com/x/web-interface/view?aid={aid}", headers=hdr)
+    with urllib.request.urlopen(req, timeout=30) as r:
+        d = json.loads(r.read())
+    if d.get("code") != 0:
+        raise RuntimeError(f"取视频信息失败：{d.get('message')}")
+    bvid = d["data"].get("bvid")
+    log(f"av{aid} -> {bvid}")
+    return add_from_bvid(bvid, name or d["data"].get("title") or "", log=log)
+
+
+def add_from_audio_url(url: str, name: str = "", log=print) -> dict:
+    """下载一个音频直链再加库。"""
+    name = name.strip() or guess_name_from_url(url)
+    ext = "." + pathlib.Path(url.split("?")[0]).suffix.lstrip(".")
+    if ext.lower() not in AUDIO_EXT:
+        ext = ".m4a"
+    tmp = pathlib.Path(tempfile.gettempdir()) / f"dl_{abs(hash(url)) % 10**8}{ext}"
+    req = urllib.request.Request(url, headers={"User-Agent": UA})
+    with urllib.request.urlopen(req, timeout=180) as r, tmp.open("wb") as f:
+        total = 0
+        while True:
+            chunk = r.read(1 << 16)
+            if not chunk:
+                break
+            f.write(chunk)
+            total += len(chunk)
+            if total > 300 * 1024 * 1024:
+                raise RuntimeError("文件太大（>300MB）")
+    log(f"下载 {tmp.name} {total/1024/1024:.1f} MB")
+    res = add_audio(tmp, name, log=log)
+    tmp.unlink(missing_ok=True)
+    res["title"] = name
+    return res
+
+
+def add_from_url(url: str, name: str = "", log=print) -> dict:
+    kind, value = resolve_url(url, log=log)
+    if kind == "bvid":
+        return add_from_bvid(value, name, log=log)
+    if kind == "aid":
+        return add_from_aid(value, name, log=log)
+    return add_from_audio_url(value, name, log=log)
+
+
 def add_from_bvid(bvid: str, name: str = "", log=print) -> dict:
     """从 B站 拉音频再加库。"""
     bvid = bvid.strip()
@@ -164,7 +260,15 @@ def add_from_bvid(bvid: str, name: str = "", log=print) -> dict:
         raise RuntimeError(f"取视频信息失败：code={d.get('code')} {d.get('message')}")
     data = d["data"]
     cid = (data.get("pages") or [{}])[0].get("cid")
-    title = name.strip() or data.get("title") or bvid
+    title = name.strip()
+    if not title:
+        # 简介里常有「歌名：xxx」，比视频标题更准
+        m = re.search(r"歌名\s*[:：]\s*([^\n\r]{1,40})", data.get("desc") or "")
+        if m:
+            title = m.group(1).strip()
+            log(f"从简介取歌名：{title}")
+    if not title:
+        title = data.get("title") or bvid
     log(f"《{title}》 {data.get('duration')}s")
 
     p = pathlib.Path(tempfile.gettempdir()) / f"{bvid}.m4a"
