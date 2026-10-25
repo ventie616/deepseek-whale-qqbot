@@ -279,6 +279,19 @@ Register-ScheduledTask -TaskName "QQBotWatchdog" -Action $action -Trigger $trigg
 
 ---
 
+## 发布（维护者用）
+
+```powershell
+python tools\make_release.py --out ..\QQBot-open-release.zip
+```
+
+它只打 `git ls-files` 里的文件：**不含 .git、不含运行数据**，并在打包后扫一遍常见敏感串
+（SESSDATA 值 / bili_jct / 本机用户路径 / 私钥 / API Key / 疑似 QQ 号）。
+
+想额外拦自己的串（不进仓库）：在仓库**同级**放一个 `secret_ids.txt`，一行一个，扫描会自动带上。
+
+---
+
 ## 许可与致谢
 
 - 本仓库代码：**MIT**（见 `LICENSE`）
