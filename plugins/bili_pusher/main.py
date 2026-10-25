@@ -1413,30 +1413,45 @@ class Main(star.Star):
 
     # ---------------- QQ 通知：按话题分层 ----------------
     def _layer_texts(self, video: dict, comment: str, note: str = "") -> list[str]:
-        """把一条 B站 消息拆成三层：视频是什么 / 为什么值得 / 我说了什么+链接。"""
+        """用她自己的口吻说：今天刷到什么 / 感觉有意思 / 是关于什么。
+
+        默认只发前两层（qq_layers=2）：
+          1) 今天刷到个《标题》，20 分钟
+          2) 看着挺有意思的，讲的是〈话题〉，<原因>
+        """
         title = str(video.get("title") or "").strip()
-        up = str(video.get("up") or "").strip()
+        core = title.strip().strip("《》").strip()[:36] or "一个视频"
         dur = int(video.get("duration") or 0)
         why = str(video.get("worth_reason") or "").strip()
         bvid = str(video.get("bvid") or "")
 
-        core = title.strip().strip("《》").strip()
-        head = f"《{core[:36]}》"
-        if up:
-            head += f"\nUP：{up}"
-        if dur:
-            head += f"｜{dur // 60} 分钟"
+        first = f"今天刷到个《{core}》"
+        if dur >= 300:
+            first += f"，{dur // 60} 分钟"
 
-        layers = [head]
+        # 把"游戏吐槽有笑点"拆成 话题=游戏吐槽 / 原因=有笑点
+        topic, tail = why, ""
         if why:
-            layers.append(f"为什么值得看：{why}")
+            if "，" in why:
+                topic, tail = why.split("，", 1)
+            elif "有" in why and why.index("有") > 1:
+                k = why.index("有")
+                topic, tail = why[:k], why[k:]
+        if not topic:
+            topic = core[:18]
+
+        if why:
+            second = f"看着挺有意思的，讲的是{topic}"
+            if tail:
+                second += f"，{tail}"
+        else:
+            second = f"看着挺有意思的，讲的是{topic}"
+
+        layers = [first, second]
         if comment:
             layers.append(f"我在下面说：{comment}")
-        else:
-            layers.append("这轮没发出去" + (f"（{note}）" if note else ""))
         if bvid:
             layers.append(f"https://www.bilibili.com/video/{bvid}")
-        # 只发前 N 层（默认 2：视频是什么 / 为什么值得看）
         try:
             keep = int(self.cfg.get("qq_layers", 2))
         except Exception:
