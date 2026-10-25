@@ -54,6 +54,14 @@
   .acts { font-size:12px; color:var(--muted); line-height:1.9; }
   .acts b { color:var(--fg); font-weight:600; }
   a { color:var(--acc); }
+  .tokchips { display:flex; flex-wrap:wrap; gap:10px; margin:6px 0 4px; }
+  .tokchip { background:var(--bg); border:1px solid var(--line); border-radius:10px; padding:6px 10px; font-size:12px; }
+  .tokchip b { font-size:15px; display:block; }
+  .tokbars { display:flex; align-items:flex-end; gap:3px; height:70px; margin:10px 0 4px; }
+  .tokbar { flex:1; background:var(--acc); border-radius:3px 3px 0 0; min-height:2px; opacity:.75; position:relative; }
+  .tokbar:hover { opacity:1; }
+  .tokbar.zero { background:var(--line); opacity:1; }
+  .toklabels { display:flex; justify-content:space-between; font-size:11px; color:var(--dim); }
 </style>
 </head>
 <body>
@@ -67,6 +75,22 @@
 </div>
 
 <div class="stats" id="stats"></div>
+
+<h2>Token 消耗</h2>
+<div class="grid">
+  <div class="card">
+    <h3>今天</h3>
+    <div class="tokchips" id="tok-today"></div>
+    <div class="tokbars" id="tok-hourly"></div>
+    <div class="toklabels"><span>0 点</span><span>12 点</span><span>23 点</span></div>
+  </div>
+  <div class="card">
+    <h3>最近 14 天</h3>
+    <div class="tokbars" id="tok-daily"></div>
+    <div class="toklabels" id="tok-daily-labels"></div>
+    <div class="tokchips" id="tok-split"></div>
+  </div>
+</div>
 
 <h2>刷 B站</h2>
 <div class="grid">
@@ -234,7 +258,64 @@ function parseHours(s) {
   }).filter(([a, b]) => !isNaN(a) && !isNaN(b));
 }
 
+function fmtCost(v) {
+  v = Number(v || 0);
+  if (v === 0) return "¥0";
+  if (v < 0.01) return "¥" + v.toFixed(4);
+  if (v < 1) return "¥" + v.toFixed(3);
+  return "¥" + v.toFixed(2);
+}
+
+function fmtTok(n) {
+  n = Number(n || 0);
+  if (n >= 1e6) return (n / 1e6).toFixed(2) + "M";
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + "k";
+  return String(n);
+}
+
+function bars(el, values, tipPrefix) {
+  const max = Math.max(1, ...values);
+  el.innerHTML = values.map(v => {
+    const h = Math.max(2, Math.round(v / max * 100));
+    const cls = v ? "tokbar" : "tokbar zero";
+    return `<div class="${cls}" style="height:${h}%" title="${tipPrefix}: ${v.toLocaleString()}"></div>`;
+  }).join("");
+}
+
+async function loadTokens() {
+  const d = await api("/api/tokens");
+  if (!d.ok) return;
+  const t = d.today || {};
+  const hitRate = t.prompt ? Math.round((t.cached || 0) / t.prompt * 100) : 0;
+  $("tok-today").innerHTML = [
+    `<div class="tokchip"><b>${fmtTok(t.total)}</b>今日 tokens</div>`,
+    `<div class="tokchip"><b>${t.calls || 0}</b>调用次数</div>`,
+    `<div class="tokchip"><b>${fmtCost(t.cost)}</b>估算花费</div>`,
+    `<div class="tokchip"><b>${hitRate}%</b>缓存命中</div>`,
+    `<div class="tokchip"><b>${fmtTok(t.prompt)}</b>输入</div>`,
+    `<div class="tokchip"><b>${fmtTok(t.completion)}</b>输出</div>`,
+  ].join("");
+
+  bars($("tok-hourly"), d.hourly || [], "这小时");
+
+  const daily = d.daily_list || [];
+  bars($("tok-daily"), daily.map(x => x.total), "当天");
+  $("tok-daily-labels").innerHTML =
+    `<span>${(daily[0]?.d || "").slice(5)}</span><span>${(daily[daily.length - 1]?.d || "").slice(5)}</span>`;
+
+  const sum = (arr) => arr.reduce((a, b) => a + b.total, 0) || 1;
+  const parts = [];
+  for (const m of (d.by_model || []).slice(0, 3)) {
+    parts.push(`<div class="tokchip"><b>${fmtTok(m.total)}</b>${m.name}</div>`);
+  }
+  for (const s of (d.by_source || []).slice(0, 3)) {
+    parts.push(`<div class="tokchip"><b>${Math.round(s.total / sum(d.by_source) * 100)}%</b>${s.name}</div>`);
+  }
+  $("tok-split").innerHTML = parts.join("");
+}
+
 async function loadAll() {
+  loadTokens().catch(() => {});
   const d = await api("/api/status");
   $("now").textContent = d.now;
   setDot("d-astr", d.services.astrbot);

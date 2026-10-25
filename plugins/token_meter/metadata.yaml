@@ -1,0 +1,4 @@
+name: token_meter
+desc: 记录每次 LLM 调用的 token 用量，控制台可视化；/token 查看今天
+author: local
+version: 1.0.0

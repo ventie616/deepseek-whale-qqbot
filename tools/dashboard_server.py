@@ -349,6 +349,80 @@ def start_login_ui() -> dict:
     return {"ok": True, "url": "http://127.0.0.1:8777/", "already": False, "slow": True}
 
 
+TOKEN_LOG = ROOT / "token_usage.jsonl"
+TOKEN_PRICES = {
+    "deepseek-v4-pro": {"miss": 2.0, "hit": 0.5, "out": 8.0},
+    "deepseek-flash": {"miss": 0.5, "hit": 0.1, "out": 2.0},
+    "_default": {"miss": 2.0, "hit": 0.5, "out": 8.0},
+}
+
+
+def token_stats(days: int = 14) -> dict:
+    """读 token_usage.jsonl，聚合出今天/按天/按小时/按来源。金额是按公开价估的。"""
+    from datetime import date, datetime, timedelta
+
+    today = date.today()
+    today_s = today.isoformat()
+    day_list = [(today - timedelta(days=i)).isoformat() for i in range(days - 1, -1, -1)]
+    agg = {
+        "today": {"prompt": 0, "completion": 0, "cached": 0, "total": 0, "calls": 0, "cost": 0.0},
+        "hourly": [0] * 24,
+        "by_model": {},
+        "by_source": {},
+        "daily": {d: 0 for d in day_list},
+    }
+    if not TOKEN_LOG.exists():
+        return {"ok": True, "empty": True, **agg}
+
+    for line in TOKEN_LOG.read_text(encoding="utf-8", errors="replace").splitlines():
+        if not line.strip():
+            continue
+        try:
+            r = json.loads(line)
+        except Exception:
+            continue
+        ts = str(r.get("t") or "")
+        day = ts[:10]
+        total = int(r.get("total") or 0)
+        if day in agg["daily"]:
+            agg["daily"][day] += total
+        if day != today_s:
+            continue
+        prompt = int(r.get("prompt") or 0)
+        completion = int(r.get("completion") or 0)
+        cached = min(int(r.get("cached") or 0), prompt)
+        t = agg["today"]
+        t["prompt"] += prompt
+        t["completion"] += completion
+        t["cached"] += cached
+        t["total"] += total
+        t["calls"] += 1
+        price = TOKEN_PRICES.get(str(r.get("model") or ""), TOKEN_PRICES["_default"])
+        t["cost"] += (
+            (prompt - cached) / 1e6 * price["miss"]
+            + cached / 1e6 * price["hit"]
+            + completion / 1e6 * price["out"]
+        )
+        try:
+            agg["hourly"][int(ts[11:13])] += total
+        except Exception:
+            pass
+        m = str(r.get("model") or "?")
+        src = str(r.get("source") or "?")
+        agg["by_model"][m] = agg["by_model"].get(m, 0) + total
+        agg["by_source"][src] = agg["by_source"].get(src, 0) + total
+
+    agg["today"]["cost"] = round(agg["today"]["cost"], 4)
+    agg["daily_list"] = [{"d": d, "total": agg["daily"][d]} for d in day_list]
+    agg["by_model"] = sorted(
+        [{"name": k, "total": v} for k, v in agg["by_model"].items()], key=lambda x: -x["total"]
+    )
+    agg["by_source"] = sorted(
+        [{"name": k, "total": v} for k, v in agg["by_source"].items()], key=lambda x: -x["total"]
+    )
+    return {"ok": True, **agg}
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "WhaleConsole/1.0"
 
@@ -393,6 +467,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/status":
             self._json(status())
+            return
+        if path == "/api/tokens":
+            self._json(token_stats())
             return
         if path == "/api/logs":
             q = parse_qs(u.query)
