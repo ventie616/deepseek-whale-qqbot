@@ -325,11 +325,11 @@ class Main(star.Star):
 
                 # 早晚仪式
                 if self._in_window() and 8.5 <= h < 11 and not self.state.get("morning_done"):
-                    if await self._send_once(kind="morning")[0]:
+                    if (await self._send_once(kind="morning"))[0]:
                         await asyncio.sleep(random.randint(30, 60) * 60)
                         continue
                 if 21.5 <= h < 23.5 and not self.state.get("night_done"):
-                    if await self._send_once(kind="night")[0]:
+                    if (await self._send_once(kind="night"))[0]:
                         await asyncio.sleep(random.randint(30, 60) * 60)
                         continue
 

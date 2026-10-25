@@ -57,7 +57,7 @@ def _day_of(token: str) -> list[str]:
         n = int(m.group(1)) if m else 3
         unit = m.group(2) if m else "小时"
         days = n if unit == "天" else max(1, round(n / 24))
-        return [(today - timedelta(days=i)).isoformat() for i in range(days + 1)]
+        return [(today - timedelta(days=i)).isoformat() for i in range(days)]
     return [today.isoformat()]
 
 
