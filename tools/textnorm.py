@@ -32,6 +32,9 @@ def add_line_end_punct(line: str) -> str:
     s = line.rstrip()
     if not s or re.search(r"[。！？…~～]$", s):
         return s
+    # 带标签的整行（URL / 视频标题行 / 我在下面说）不动
+    if s.startswith(("https://", "http://", "为什么值得看：", "我在下面说：", "《", "UP：", "这轮没发出去")):
+        return s
     if QUESTION_TAIL.search(s):
         return s + "？"
     if any(w in s for w in QUESTION_WORDS) and not any(m in s for m in STATEMENT_MARKERS):
@@ -45,6 +48,18 @@ def fix_punct(text: str, split_long_lines: bool = True, end_punct: bool = False)
     s = str(text or "")
     if not s.strip():
         return s
+
+    # 0) 先把已经被压坏的 URL 修回来（https：//www。xxx。com）
+    s = re.sub(r"https?：//", lambda m: m.group(0).replace("：", ":"), s)
+    s = re.sub(r"(?<=[A-Za-z0-9])\。([A-Za-z]{2,})", r".\1", s)
+
+    # 0.1) 然后把 URL 挖出来保护起来，避免冒号/点被转成全角
+    urls = re.findall(r"https?://[^\s\u4e00-\u9fff]+", s)
+    holders = []
+    for i, u in enumerate(urls):
+        token = f"\x00URL{i}\x00"
+        holders.append((token, u))
+        s = s.replace(u, token)
 
     # 1) 半角标点 -> 全角（数字之间不动）
     s = re.sub(r"(?<!\d),(?!\d)", "，", s)
@@ -62,10 +77,16 @@ def fix_punct(text: str, split_long_lines: bool = True, end_punct: bool = False)
     s = re.sub(r"，{2,}", "，", s)
     s = re.sub(r"。{2,}", "。", s)
 
-    # 4) 行内空格断句 -> 逗号
-    s = re.sub(r"(?<=[\u4e00-\u9fff]) (?=[\u4e00-\u9fff])", "，", s)
-    # 「家访9 老主播」这种：前一个词是"中文+数字"，也算断句
-    s = re.sub(r"(?<=[\u4e00-\u9fff][0-9]) (?=[\u4e00-\u9fff])", "，", s)
+    # 4) 行内空格断句 -> 逗号（书名号标题行、URL 行不动）
+    fixed_lines = []
+    for line in s.split("\n"):
+        if line.lstrip().startswith(("《", "http://", "https://")):
+            fixed_lines.append(line)
+            continue
+        line = re.sub(r"(?<=[\u4e00-\u9fff]) (?=[\u4e00-\u9fff])", "，", line)
+        line = re.sub(r"(?<=[\u4e00-\u9fff][0-9]) (?=[\u4e00-\u9fff])", "，", line)
+        fixed_lines.append(line)
+    s = "\n".join(fixed_lines)
 
     # 5) 句末不加句号
     s = re.sub(r"。$", "", s, flags=re.M)
@@ -73,6 +94,9 @@ def fix_punct(text: str, split_long_lines: bool = True, end_punct: bool = False)
     # 6) 一行逗号 >=3 就拆行（主动消息不拆，它本来就是一整句）
     out = []
     for line in s.split("\n"):
+        if line.lstrip().startswith(("《", "http://", "https://")):
+            out.append(line)
+            continue
         if split_long_lines and line.count("，") >= 3:
             parts = [p.strip() for p in line.split("，") if p.strip()]
             out.extend(parts[:6])
@@ -83,6 +107,10 @@ def fix_punct(text: str, split_long_lines: bool = True, end_punct: bool = False)
     # 7) 空行压单换行 + 行内多空格收敛
     s = re.sub(r"[ \t]*\n[ \t]*(?:\n[ \t]*)+", "\n", s)
     s = re.sub(r"[ \t]{2,}", " ", s)
+
+    # 7.5) 还原 URL
+    for token, u in holders:
+        s = s.replace(token, u)
 
     # 8) 行尾标点（问句 ？ / 强情绪 ！）
     if end_punct:

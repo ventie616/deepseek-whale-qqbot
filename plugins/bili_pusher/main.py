@@ -28,6 +28,15 @@ import zlib
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import sys as _sys
+from pathlib import Path as _Path
+
+_sys.path.insert(0, str(_Path(r"C:\QQBot\tools")))
+try:
+    from textnorm import fix_punct as _tn_fix  # noqa: E402
+except Exception:
+    _tn_fix = None
+
 from astrbot.api import logger, star
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.message_components import At, Plain
@@ -1400,6 +1409,43 @@ class Main(star.Star):
         except OSError:
             return []
 
+    # ---------------- QQ 通知：按话题分层 ----------------
+    def _layer_texts(self, video: dict, comment: str, note: str = "") -> list[str]:
+        """把一条 B站 消息拆成三层：视频是什么 / 为什么值得 / 我说了什么+链接。"""
+        title = str(video.get("title") or "").strip()
+        up = str(video.get("up") or "").strip()
+        dur = int(video.get("duration") or 0)
+        why = str(video.get("worth_reason") or "").strip()
+        bvid = str(video.get("bvid") or "")
+
+        core = title.strip().strip("《》").strip()
+        head = f"《{core[:36]}》"
+        if up:
+            head += f"\nUP：{up}"
+        if dur:
+            head += f"｜{dur // 60} 分钟"
+
+        layers = [head]
+        if why:
+            layers.append(f"为什么值得看：{why}")
+        if comment:
+            layers.append(f"我在下面说：{comment}")
+        else:
+            layers.append("这轮没发出去" + (f"（{note}）" if note else ""))
+        if bvid:
+            layers.append(f"https://www.bilibili.com/video/{bvid}")
+        return layers
+
+    async def _notify_bili_layers(self, video: dict, comment: str, note: str = "") -> bool:
+        """分层发送：每条之间隔 0.9 秒，避免一次甩一大团。"""
+        ok_any = False
+        for i, line in enumerate(self._layer_texts(video, comment, note)):
+            if i:
+                await asyncio.sleep(0.9)
+            sent = await self._send_qq(line)
+            ok_any = ok_any or sent
+        return ok_any
+
     async def _send_qq(self, text: str) -> bool:
         qq = str(self.cfg.get("target_qq") or "").strip()
         umo = self._umo(qq) if qq else None
@@ -1407,6 +1453,8 @@ class Main(star.Star):
             logger.warning("[bili_pusher] 找不到 QQ 会话，无法回退")
             return False
         # 私聊不允许 At 组件（OneBot 会直接拒收整条消息），只用纯文本
+        if _tn_fix is not None:
+            text = _tn_fix(text, split_long_lines=False, end_punct=True)
         chain = MessageChain([Plain(text)])
         try:
             ok = bool(await self.context.send_message(umo, chain))
@@ -1543,12 +1591,16 @@ class Main(star.Star):
                 logger.info(f"[bili_pusher] B站评论成功：{note}")
                 await asyncio.to_thread(self._append_memory, video, text)
                 self._append_chat(f"在B站《{video.get('title')}》下评论了：{text}", tag="B站评论")
+                if self.cfg.get("notify_on_comment", True):
+                    await self._notify_bili_layers(
+                        video, text, "" if visible else "可能还在审核"
+                    )
                 self._log_activity("comment", video.get("title") or "", text, video.get("bvid") or "")
                 return True, f"已评论：{text}"
             logger.warning(f"[bili_pusher] B站评论失败：{msg}")
             if mode == "bili_comment":
                 return False, msg
-            await self._send_qq(f"{text}\n\n（本来想在评论区说这句，结果发不出去，就先跟你说一声）")
+            await self._notify_bili_layers(video, text, "评论区没发出去")
             self._remember(video["bvid"])
             await asyncio.to_thread(
                 self._write_report, video, text, video.get("worth_reason", ""), False, msg, skipped
@@ -1556,7 +1608,7 @@ class Main(star.Star):
             await asyncio.to_thread(self._append_memory, video, text)
             return True, f"评论失败已回退QQ：{msg}"
 
-        if await self._send_qq(text):
+        if await self._notify_bili_layers(video, text):
             self._remember(video["bvid"])
             await asyncio.to_thread(self._append_memory, video, text)
             return True, f"已私聊：{text}"
