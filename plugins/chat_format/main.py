@@ -78,13 +78,24 @@ class Main(star.Star):
             if result is None or not result.chain:
                 return
             changed = 0
+            rebuilt = []
             for comp in result.chain:
                 if not isinstance(comp, Plain) or not comp.text:
+                    rebuilt.append(comp)
                     continue
                 new = fix_punct(comp.text)
                 if new != comp.text:
-                    comp.text = new
                     changed += 1
+                # 多行拆成多个 Plain：每行一个消息段，分段回复会按段发送，
+                # 不再依赖 split_words 里有没有 "\n"
+                lines = [x for x in new.split("\n") if x.strip()]
+                if len(lines) > 1:
+                    rebuilt.extend(Plain(x) for x in lines)
+                    changed += 1
+                else:
+                    comp.text = new
+                    rebuilt.append(comp)
+            result.chain = rebuilt
             if changed:
                 logger.info(f"[chat_format] 规整了 {changed} 段（标点/空行）")
         except Exception as exc:  # noqa: BLE001
