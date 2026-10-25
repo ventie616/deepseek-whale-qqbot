@@ -28,12 +28,15 @@ import re
 import secrets
 import socket
 import subprocess
+import sys
+import tempfile
+import threading
 import threading
 import time
 from datetime import date, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import urllib.request
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 ROOT = pathlib.Path(r"C:\QQBot")
 DASH = ROOT / "dashboard" / "index.html"
@@ -148,6 +151,60 @@ def status() -> dict:
             "last_check": (read_json(ROOT / "bili_login_state.json", {}) or {}).get("last_ok"),
         },
     }
+
+
+sys.path.insert(0, str(ROOT / "tools"))
+try:
+    import audio_lib  # noqa: E402
+except Exception:  # noqa: BLE001
+    audio_lib = None
+
+JOBS: dict[str, dict] = {}
+
+
+def audio_list() -> dict:
+    if audio_lib is None:
+        return {"ok": False, "error": "audio_lib 不可用"}
+    songs = audio_lib.list_songs()
+    return {
+        "ok": True,
+        "songs": songs,
+        "totals": {
+            "songs": len(songs),
+            "clips": sum(len(s["clips"]) for s in songs),
+            "fulls": sum(1 for s in songs if s["full"]),
+            "mb": round(sum(
+                (s["full"]["size_kb"] if s["full"] else 0) + sum(c["size_kb"] or 0 for c in s["clips"])
+                for s in songs
+            ) / 1024, 1),
+        },
+    }
+
+
+def run_import(job_id: str, mode: str, payload: dict) -> None:
+    job = JOBS[job_id]
+    job["state"] = "running"
+
+    def log(msg: str) -> None:
+        job["log"].append(str(msg))
+        job["updated"] = time.time()
+
+    try:
+        if mode == "bvid":
+            res = audio_lib.add_from_bvid(payload["bvid"], payload.get("name") or "", log=log)
+        else:
+            src = pathlib.Path(payload["path"])
+            res = audio_lib.add_audio(src, payload.get("name") or src.stem, log=log)
+            if payload.get("cleanup"):
+                src.unlink(missing_ok=True)
+        job["result"] = res
+        job["state"] = "done"
+    except Exception as exc:  # noqa: BLE001
+        job["state"] = "error"
+        job["error"] = f"{type(exc).__name__}: {exc}"
+        log(job["error"])
+    finally:
+        job["updated"] = time.time()
 
 
 def onebot_token() -> str:
@@ -355,6 +412,52 @@ class Handler(BaseHTTPRequestHandler):
             clean = [re.sub(r"\x1b\[[0-9;]*m", "", x) for x in text]
             self._json({"ok": True, "file": str(fp), "text": "\n".join(clean)})
             return
+        if path == "/api/audio":
+            self._json(audio_list())
+            return
+        if path == "/api/audio/job":
+            q = parse_qs(u.query)
+            jid = (q.get("id") or [""])[0]
+            job = JOBS.get(jid)
+            if not job:
+                self._json({"state": "gone"})
+                return
+            self._json({"state": job["state"], "log": job["log"][-40:],
+                        "result": job.get("result"), "error": job.get("error")})
+            return
+        if path == "/api/audio/play":
+            q = parse_qs(u.query)
+            rel = (q.get("file") or [""])[0]
+            fp = audio_lib.play_path(rel) if audio_lib else None
+            if fp is None:
+                self._json({"ok": False, "error": "not found"}, 404)
+                return
+            data = fp.read_bytes()
+            rng = self.headers.get("Range")
+            if rng and rng.startswith("bytes="):
+                try:
+                    a, b = rng[6:].split("-", 1)
+                    start = int(a or 0)
+                    end = int(b) if b else len(data) - 1
+                    end = min(end, len(data) - 1)
+                    chunk = data[start:end + 1]
+                    self.send_response(206)
+                    self.send_header("Content-Type", "audio/mpeg")
+                    self.send_header("Content-Range", f"bytes {start}-{end}/{len(data)}")
+                    self.send_header("Content-Length", str(len(chunk)))
+                    self.send_header("Accept-Ranges", "bytes")
+                    self.end_headers()
+                    self.wfile.write(chunk)
+                    return
+                except Exception:
+                    pass
+            self.send_response(200)
+            self.send_header("Content-Type", "audio/mpeg")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Accept-Ranges", "bytes")
+            self.end_headers()
+            self.wfile.write(data)
+            return
         if path == "/api/bili":
             data = bili_account()
             data["recent"] = recent_commented(5)
@@ -394,6 +497,30 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"ok": False, "error": "bad token"}, 403)
             return
         u = urlparse(self.path)
+
+        # 二进制上传必须先处理：否则 _body() 会把请求体当 JSON 读掉
+        if u.path == "/api/audio/upload":
+            q = parse_qs(urlparse(self.path).query)
+            name = (q.get("name") or ["upload.m4a"])[0]
+            safe = re.sub(r"[^\w.\-\u4e00-\u9fff]", "_", name)[-60:] or "upload.m4a"
+            dst = ROOT / "03-临时" / f"upload_{int(time.time())}_{safe}"
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            n = int(self.headers.get("Content-Length") or 0)
+            if n <= 0 or n > 200 * 1024 * 1024:
+                self._json({"ok": False, "error": "文件为空或超过 200MB"}, 400)
+                return
+            with dst.open("wb") as f:
+                left = n
+                while left > 0:
+                    chunk = self.rfile.read(min(1 << 20, left))
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    left -= len(chunk)
+            self._json({"ok": True, "path": str(dst), "bytes": dst.stat().st_size,
+                        "name": dst.name})
+            return
+
         body = self._body()
 
         if u.path == "/api/config/bili":
@@ -454,6 +581,35 @@ class Handler(BaseHTTPRequestHandler):
             )
             d["recent"] = recent_commented(3)
             self._json(d)
+            return
+
+        if u.path == "/api/audio/import":
+            mode = str(body.get("mode") or "bvid")
+            payload = body if mode == "bvid" else {
+                "path": body.get("path"), "name": body.get("name"), "cleanup": True,
+            }
+            if mode == "bvid" and not str(body.get("bvid") or "").strip():
+                self._json({"ok": False, "error": "缺 BV 号"}, 400)
+                return
+            if mode == "file" and not payload.get("path"):
+                self._json({"ok": False, "error": "缺文件"}, 400)
+                return
+            if audio_lib is None:
+                self._json({"ok": False, "error": "audio_lib 不可用"}, 500)
+                return
+            jid = f"a{int(time.time() * 1000)}"
+            JOBS[jid] = {"state": "queued", "log": [], "updated": time.time()}
+            threading.Thread(target=run_import, args=(jid, mode, payload), daemon=True).start()
+            self._json({"ok": True, "id": jid})
+            return
+
+        if u.path == "/api/audio/delete":
+            song = str(body.get("song") or "")
+            if not song:
+                self._json({"ok": False, "error": "缺歌名"}, 400)
+                return
+            removed = audio_lib.delete_song(song) if audio_lib else 0
+            self._json({"ok": True, "removed": removed})
             return
 
         if u.path == "/api/bili/login-ui":

@@ -111,6 +111,30 @@
   </div>
 </div>
 
+<h2>唱歌素材</h2>
+<div class="grid">
+  <div class="card">
+    <h3>曲库 <span id="a-total" style="color:var(--dim);font-weight:400"></span></h3>
+    <div id="audio-list" class="rules">读取中…</div>
+  </div>
+  <div class="card">
+    <h3>加歌</h3>
+    <div class="row"><label>来源</label>
+      <select id="a-mode" onchange="audioMode()">
+        <option value="bvid">B站 BV 号</option>
+        <option value="file">本地音频</option>
+      </select></div>
+    <div class="row" id="a-bv-row"><label>BV 号</label>
+      <input type="text" id="a-bvid" placeholder="BV1xxxxxxxxx"></div>
+    <div class="row" id="a-file-row" style="display:none"><label>选文件</label>
+      <input type="file" id="a-file" accept="audio/*,video/*" style="width:auto"></div>
+    <div class="row"><label>歌名（可选）</label>
+      <input type="text" id="a-name" placeholder="留空自动取"></div>
+    <div class="btns"><button class="primary" onclick="importAudio()">导入</button></div>
+    <pre id="a-log" style="display:none"></pre>
+  </div>
+</div>
+
 <h2>黏人（主动找你）</h2>
 <div class="grid">
   <div class="card">
@@ -328,6 +352,82 @@ async function showReport() {
   el.textContent = r.text || "（没有）";
 }
 
+async function loadAudio() {
+  const d = await api("/api/audio");
+  if (!d.ok) { $("audio-list").textContent = d.error || "读取失败"; return; }
+  $("a-total").textContent = `${d.totals.songs} 首 / ${d.totals.clips} 段 / ${d.totals.mb} MB`;
+  $("audio-list").innerHTML = (d.songs || []).map(s => {
+    const plays = (s.clips || []).map((c, i) =>
+      `<button style="padding:2px 7px;font-size:11px" onclick="playFile('${c.file}')">▶ ${i + 1}</button>`).join(" ");
+    const full = s.full
+      ? `<button style="padding:2px 7px;font-size:11px" onclick="playFile('${s.full.file}')">▶ 整首</button>`
+      : `<span style="font-size:11px;color:var(--dim)">无整曲</span>`;
+    return `<div class="rule"><span>${s.song}</span>
+      <span class="meta">${plays} ${full}
+      <button class="danger" style="padding:2px 7px;font-size:11px" onclick="delSong('${s.song.replace(/'/g, "\\'")}')">删</button></span></div>`;
+  }).join("") || `<div class="acts">曲库是空的，右边加一首</div>`;
+}
+
+function audioMode() {
+  const m = $("a-mode").value;
+  $("a-bv-row").style.display = m === "bvid" ? "flex" : "none";
+  $("a-file-row").style.display = m === "file" ? "flex" : "none";
+}
+
+function playFile(rel) {
+  const a = new Audio(`/api/audio/play?file=${encodeURIComponent(rel)}`);
+  a.play().catch(() => toast("播放失败"));
+}
+
+async function delSong(song) {
+  if (!confirm(`删除《${song}》？整曲和节选都会删掉`)) return;
+  const r = await api("/api/audio/delete", { method: "POST", body: JSON.stringify({ song }) });
+  toast(r.ok ? `已删除 ${r.removed} 个文件` : "删除失败");
+  loadAudio();
+}
+
+async function importAudio() {
+  const mode = $("a-mode").value;
+  const name = $("a-name").value.trim();
+  const el = $("a-log");
+  el.style.display = "block";
+  el.textContent = "准备中…";
+
+  let payload;
+  if (mode === "bvid") {
+    const bvid = $("a-bvid").value.trim();
+    if (!/^BV[0-9A-Za-z]{8,}$/.test(bvid)) { el.textContent = "BV 号看起来不对"; return; }
+    payload = { mode: "bvid", bvid, name };
+  } else {
+    const f = $("a-file").files[0];
+    if (!f) { el.textContent = "还没选文件"; return; }
+    el.textContent = `上传 ${f.name}（${(f.size / 1024 / 1024).toFixed(1)} MB）…`;
+    const up = await fetch(`/api/audio/upload?name=${encodeURIComponent(f.name)}`, {
+      method: "POST", headers: { "X-Token": TOKEN }, body: f,
+    }).then(r => r.json());
+    if (!up.ok) { el.textContent = "上传失败：" + (up.error || ""); return; }
+    payload = { mode: "file", path: up.path, name: name || f.name.replace(/\.[^.]+$/, "") };
+  }
+
+  const r = await api("/api/audio/import", { method: "POST", body: JSON.stringify(payload) });
+  if (!r.ok) { el.textContent = "启动失败：" + (r.error || ""); return; }
+  el.textContent = "处理中…";
+  const id = r.id;
+  const timer = setInterval(async () => {
+    const s = await api(`/api/audio/job?id=${id}`);
+    el.textContent = (s.log || []).join("\n") || "处理中…";
+    el.scrollTop = el.scrollHeight;
+    if (s.state === "done") {
+      clearInterval(timer);
+      el.textContent += "\n✅ 已入库";
+      loadAudio();
+    } else if (s.state === "error") {
+      clearInterval(timer);
+      el.textContent += "\n❌ " + (s.error || "失败");
+    }
+  }, 1500);
+}
+
 async function loadBili(force) {
   try {
     const d = force
@@ -393,6 +493,7 @@ async function testMsg() {
 
 loadAll();
 loadBili();
+loadAudio();
 loadLog();
 setInterval(loadAll, 8000);
 setInterval(() => loadBili(), 60000);
