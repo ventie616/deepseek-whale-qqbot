@@ -451,6 +451,41 @@ def token_stats(days: int = 14) -> dict:
     return {"ok": True, **agg}
 
 
+DIARY_DIR = ROOT / "diary"
+DIARY_TRIGGER = ROOT / "diary_trigger.json"
+DIARY_RESULT = ROOT / "diary_trigger_result.json"
+
+
+def diary_list() -> list[dict]:
+    """列出所有日记，新的在前。"""
+    if not DIARY_DIR.is_dir():
+        return []
+    out = []
+    for f in sorted(DIARY_DIR.glob("*.md"), reverse=True):
+        try:
+            text = f.read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        out.append({
+            "date": f.stem,
+            "chars": len(text),
+            "preview": text.replace("\n", " ")[:40],
+        })
+    return out
+
+
+def diary_read(day: str) -> dict:
+    f = DIARY_DIR / f"{day}.md"
+    if not f.is_file():
+        return {"ok": False, "error": f"{day} 没有日记"}
+    try:
+        text = f.read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        return {"ok": False, "error": str(exc)}
+    lines = [x for x in text.splitlines() if x.strip()]
+    return {"ok": True, "date": day, "text": text, "lines": lines, "chars": len(text)}
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "WhaleConsole/1.0"
 
@@ -495,6 +530,14 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/status":
             self._json(status())
+            return
+        if path == "/api/diary":
+            q = parse_qs(u.query)
+            day = (q.get("date") or [""])[0].strip()
+            if day:
+                self._json(diary_read(day))
+            else:
+                self._json({"ok": True, "entries": diary_list()})
             return
         if path == "/api/tokens":
             self._json(token_stats())
@@ -610,6 +653,20 @@ class Handler(BaseHTTPRequestHandler):
         u = urlparse(self.path)
 
         # 二进制上传必须先处理：否则 _body() 会把请求体当 JSON 读掉
+        if u.path == "/api/diary/rewrite":
+            if not self._authorized():
+                self._json({"ok": False, "error": "token"}, 403)
+                return
+            try:
+                DIARY_TRIGGER.write_text(
+                    json.dumps({"action": "rewrite", "at": __import__("time").time()},
+                               ensure_ascii=False),
+                    encoding="utf-8",
+                )
+                self._json({"ok": True, "msg": "已通知她重写，十几秒后刷新"})
+            except OSError as exc:
+                self._json({"ok": False, "error": str(exc)}, 500)
+            return
         if u.path == "/api/audio/upload":
             q = parse_qs(urlparse(self.path).query)
             name = (q.get("name") or ["upload.m4a"])[0]

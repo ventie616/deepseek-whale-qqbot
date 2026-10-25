@@ -63,6 +63,13 @@
   .tokbar.zero { background:var(--line); opacity:1; }
   .tokbar.bili { background:#f0a04b; }
   .tokbar.zero.bili { background:var(--line); }
+  .diarylist { display:flex; flex-direction:column; gap:6px; max-height:220px; overflow:auto; }
+  .diaryitem { display:flex; justify-content:space-between; gap:8px; padding:7px 10px;
+               border:1px solid var(--line); border-radius:8px; cursor:pointer; font-size:13px; }
+  .diaryitem:hover { border-color:var(--acc); }
+  .diaryitem.on { border-color:var(--acc); background:var(--bg); }
+  .diaryitem .d { color:var(--muted); font-size:12px; }
+  .diarybody { white-space:pre-wrap; line-height:1.85; font-size:14px; min-height:120px; }
   .toklabels { display:flex; justify-content:space-between; font-size:11px; color:var(--dim); }
 </style>
 </head>
@@ -98,6 +105,21 @@
   <div class="tokbars" id="tok-daily" style="height:82px"></div>
   <div class="toklabels" id="tok-daily-labels"></div>
   <div class="tokchips" id="tok-split"></div>
+</div>
+
+<h2>她的日记</h2>
+<div class="grid">
+  <div class="card">
+    <h3>写过这些天</h3>
+    <div id="diary-list" class="diarylist"></div>
+    <div class="btns" style="margin-top:10px">
+      <button class="primary" onclick="rewriteDiary()">让她重写今天</button>
+    </div>
+  </div>
+  <div class="card">
+    <h3 id="diary-title">选一天看看</h3>
+    <div id="diary-body" class="diarybody">左边点一天，或者她还没开始写。</div>
+  </div>
 </div>
 
 <h2>刷 B站</h2>
@@ -300,6 +322,38 @@ function tokChips(el, t) {
   ].join("");
 }
 
+async function loadDiary(pick) {
+  const d = await api("/api/diary");
+  const list = d.entries || [];
+  if (!list.length) {
+    $("diary-list").innerHTML = '<div class="diaryitem"><span>还没有日记</span></div>';
+    return;
+  }
+  $("diary-list").innerHTML = list.map(e =>
+    `<div class="diaryitem" data-date="${e.date}" onclick="openDiary('${e.date}')">` +
+    `<span>${e.date}</span><span class="d">${e.chars} 字</span></div>`
+  ).join("");
+  const target = pick || (window._diaryDate && list.some(e => e.date === window._diaryDate)
+    ? window._diaryDate : list[0].date);
+  openDiary(target);
+}
+
+async function openDiary(date) {
+  window._diaryDate = date;
+  document.querySelectorAll(".diaryitem").forEach(el => {
+    el.classList.toggle("on", el.dataset.date === date);
+  });
+  const d = await api("/api/diary?date=" + encodeURIComponent(date));
+  $("diary-title").textContent = date + (d.ok ? `（${d.chars} 字）` : "");
+  $("diary-body").textContent = d.ok ? d.text : (d.error || "读不到");
+}
+
+async function rewriteDiary() {
+  const d = await api("/api/diary/rewrite", { method: "POST", body: "{}" });
+  toast(d.ok ? "已经让她重写，等十几秒刷新" : ("失败：" + (d.error || "")));
+  if (d.ok) setTimeout(() => loadDiary(), 15000);
+}
+
 async function loadTokens() {
   const d = await api("/api/tokens");
   if (!d.ok) return;
@@ -343,6 +397,7 @@ async function loadTokens() {
 
 async function loadAll() {
   loadTokens().catch(() => {});
+  loadDiary().catch(() => {});
   const d = await api("/api/status");
   $("now").textContent = d.now;
   setDot("d-astr", d.services.astrbot);

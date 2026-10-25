@@ -32,6 +32,8 @@ MOOD = ROOT / "mood.json"
 PERSONA = ROOT / "persona" / "whale-girl.md"
 DM_CFG = ROOT / "proactive_dm.json"
 PUSH_CFG = ROOT / "bili_push.json"
+TRIGGER = ROOT / "diary_trigger.json"
+RESULT = ROOT / "diary_trigger_result.json"
 
 MAX_CHARS = 420
 WRITE_HOUR = 22          # 22 点后才写当天的
@@ -231,6 +233,28 @@ class Main(star.Star):
         return True, text
 
     # ---------------- 循环 ----------------
+    async def _watch_trigger(self) -> None:
+        """控制台点「重写」时，写 diary_trigger.json 通知这里干活。"""
+        while not self._stop:
+            try:
+                if TRIGGER.is_file():
+                    payload = _load_json(TRIGGER, {})
+                    TRIGGER.unlink(missing_ok=True)
+                    day = datetime.now().strftime("%Y-%m-%d")
+                    ok, text = await self._write_day(day, force=True)
+                    RESULT.write_text(
+                        json.dumps(
+                            {"ok": ok, "day": day, "text": text if ok else "",
+                             "at": datetime.now().strftime("%H:%M:%S")},
+                            ensure_ascii=False,
+                        ),
+                        encoding="utf-8",
+                    )
+                    logger.info(f"[diary] 控制台触发重写：{'成功' if ok else text}")
+            except Exception as exc:  # noqa: BLE001
+                logger.info(f"[diary] 触发器异常：{exc}")
+            await asyncio.sleep(5)
+
     async def _loop(self) -> None:
         await asyncio.sleep(120)
         while not self._stop:
@@ -247,11 +271,13 @@ class Main(star.Star):
     async def initialize(self) -> None:
         DIARY.mkdir(parents=True, exist_ok=True)
         self._task = asyncio.create_task(self._loop())
+        self._watcher = asyncio.create_task(self._watch_trigger())
 
     async def terminate(self) -> None:
         self._stop = True
-        if self._task:
-            self._task.cancel()
+        for task in (getattr(self, "_task", None), getattr(self, "_watcher", None)):
+            if task:
+                task.cancel()
 
     # ---------------- 注入 ----------------
     @filter.on_llm_request()
