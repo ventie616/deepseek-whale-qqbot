@@ -1045,34 +1045,25 @@ class Main(star.Star):
 
     @staticmethod
     def _fix_punct(text: str) -> str:
-        """把"空格断句"改成正常中文标点。"""
-        s = text.replace("\u3000", " ").strip()
+        """把"空格断句"改成中文标点——统一走 tools/textnorm.py，只保留两处评论特例。
+
+        - 表情码 [doge] 前后留空格
+        - 逗号超过 4 个时合并尾部，避免被判"分句太多"
+        """
+        s = str(text or "").replace("\u3000", " ").strip()
         # 表情码（[doge] 之类）前后整理
-        s = re.sub(r"\s+(\[[^\]]{1,8}\])", r"\1", s)
-        s = re.sub(r"(\[[^\]]{1,8}\])", r" \1 ", s)
-        # 折叠空格
-        s = re.sub(r"[ \t]+", " ", s)
-        # 中文之间的空格 -> 逗号；超过 4 处就合并（不留空格），避免"。"把句子切太碎
-        idx = [0]
-        total = len(re.findall(r"(?<=[\u4e00-\u9fff])\s+(?=[\u4e00-\u9fffA-Za-z])", s))
+        s = re.sub(r"\s*(\[[^\]]{1,10}\])", r" \1", s)
+        s = re.sub(r"(\[[^\]]{1,10}\])", r"\1 ", s)
+        s = re.sub(r"[ \t]+", " ", s).strip()
 
-        def _mk(_m):
-            i = idx[0]
-            idx[0] += 1
-            # 最后一处（召唤句前）一定是逗号；中间的超过 4 处就合并
-            if i >= total - 1 or i < 4:
-                return "，"
-            return ""
+        if _tn_fix is not None:
+            s = _tn_fix(s, split_long_lines=False, end_punct=False)
 
-        s = re.sub(r"(?<=[\u4e00-\u9fff])\s+(?=[\u4e00-\u9fffA-Za-z])", _mk, s)
-        s = re.sub(r"\s+([，。！？～、；：])", r"\1", s)
-        s = re.sub(r"([，。！？～、；：])\s+", r"\1", s)
-        # 连续标点收敛
-        s = re.sub(r"[，。]{2,}", "，", s)
-        s = re.sub(r"！{2,}", "！", s)
-        s = re.sub(r"[，。]{2,}", "，", s)
-        # 结尾别留逗号
-        return s.strip(" ，,").strip()
+        if s.count("，") > 4:
+            parts = s.split("，")
+            s = "，".join(parts[:4]) + "".join(parts[4:])
+
+        return s.strip(" ，,、；;").strip()
 
     @staticmethod
     def _strip_labels(text: str) -> str:
