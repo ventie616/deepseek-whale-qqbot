@@ -1,4 +1,4 @@
-"""把仓库打成干净的发布包（不带 .git、不带运行数据）。
+r"""把仓库打成干净的发布包（不带 .git、不带运行数据）。
 
 用法：
     python tools/make_release.py                 # 输出到仓库上一级/QQBot-open-release.zip
