@@ -186,3 +186,43 @@ python tools\relocate.py D:\apps\QQBot
 - `.bat` 必须是**纯 ASCII + CRLF**，改完检查一遍
 - 运行数据（`chat_archive/`、`group_memory.json`、`stickers/` 等）要一起搬
 - 守护的计划任务、`.url` 快捷方式里的路径也要改
+
+---
+
+## 12. 控制台（可选但强烈建议）
+
+```powershell
+python tools\dashboard_server.py       # 或双击 00-控制台.bat（自动起服务并开浏览器）
+```
+
+打开 `http://127.0.0.1:8765/`。服务用 `pythonw` 后台跑，关浏览器不影响；
+重启电脑后再双击一次 `00-控制台.bat` 即可（会自动判断是否已在跑）。
+
+token 在 `dashboard\.token`，只监听 127.0.0.1，别把 token 文件发给别人。
+
+## 13. 人格文件
+
+```powershell
+# 改 persona\whale-girl.md 之后
+python tools\set_persona.py
+```
+
+人格存在 AstrBot 的 `data_v4.db` 里，这个脚本负责把 md 同步进去。改完要重启 AstrBot。
+
+## 14. 模型配置（别用默认）
+
+`cmd_config.json`：
+
+```jsonc
+"provider": [
+  {"id": "deepseek/deepseek-v4-pro", "model": "deepseek-v4-pro",
+   "custom_extra_body": {"thinking": {"type": "disabled"}}},
+  {"id": "deepseek/deepseek-flash", "model": "deepseek-flash",
+   "custom_extra_body": {"thinking": {"type": "disabled"}}}
+],
+"agent_runner": {"config": {"model": {
+  "provider_id": "deepseek/deepseek-v4-pro",
+  "fallback_provider_ids": ["deepseek/deepseek-flash"]}}}
+```
+
+不关 `thinking` 的话，长回答会被思考链吃掉、正文变空——这是"她看起来变笨"最常见的原因。
