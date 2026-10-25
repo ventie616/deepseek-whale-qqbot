@@ -1,0 +1,51 @@
+# 运行数据（含个人信息，绝对不要提交）
+/data/*
+!/data/anime_kb/
+/data/anime_kb/*
+!/data/anime_kb/*.json
+/logs/
+*.log
+/chat_archive/
+/reports/
+previews/
+/downloads/
+/sticker_inbox/
+/stickers/
+/voice_clips/
+
+# 密钥
+bili_account.json
+token.txt
+*.session
+.env
+
+# 运行状态
+*state.json
+*heartbeat.json
+watchdog_restart.json
+watchdog.pause
+watchdog_pause
+
+# 依赖 / 第三方
+venv/
+__pycache__/
+*.pyc
+snowluma/
+node_modules/
+
+# 控制台 token（本地密钥）
+/dashboard/.token
+*.token
+
+# 运行数据里容易被误提交的
+mood.json
+bili_activity.jsonl
+bili_push_state.json
+bili_login_state.json
+bili_pic_cache.json
+bili_trigger.json
+bili_trigger_result.json
+guard_pending.json
+watchdog_heartbeat.json
+watchdog.pid
+persona/whale-girl.old.txt
