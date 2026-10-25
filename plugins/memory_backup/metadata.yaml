@@ -1,0 +1,4 @@
+name: memory_backup
+desc: 每日备份记忆（记忆/规则/人格/索引），保留 14 天；/备份 手动触发
+author: local
+version: 1.0.0
