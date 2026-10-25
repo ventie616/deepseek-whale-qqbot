@@ -69,6 +69,8 @@ DEFAULTS = {
     "target_name": "YOUR_BILI_NAME",
     # 推到 QQ 时发几层：1=视频信息，2=+为什么值得看，3=+评论，4=+链接
     "qq_layers": 2,
+    # 推 QQ 时合并成一条消息（true = 每层单独发一条）
+    "qq_split": False,
 }
 
 UA = (
@@ -1488,9 +1490,17 @@ class Main(star.Star):
         return layers[: max(1, min(keep, len(layers)))]
 
     async def _notify_bili_layers(self, video: dict, comment: str, note: str = "") -> bool:
-        """分层发送：每条之间隔 0.9 秒，避免一次甩一大团。"""
+        """推 QQ：默认合并成一条消息（一次只推一条）。
+
+        qq_split = true 时改成逐条发（每条隔 0.9 秒）。
+        """
+        layers = self._layer_texts(video, comment, note)
+        if not layers:
+            return False
+        if not self.cfg.get("qq_split", False):
+            return await self._send_qq("\n".join(layers))
         ok_any = False
-        for i, line in enumerate(self._layer_texts(video, comment, note)):
+        for i, line in enumerate(layers):
             if i:
                 await asyncio.sleep(0.9)
             sent = await self._send_qq(line)
