@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>鲸鱼娘 · 控制台</title>
+<style>
+  :root { color-scheme: light dark; --bg:#f5f6f8; --fg:#1e2430; --card:#fff; --line:#e6e9ef;
+          --muted:#6b7383; --dim:#9aa2b1; --acc:#4d6bfe; --ok:#22a06b; --bad:#d64545; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14171c; --fg:#e6e9ee; --card:#1c2027; --line:#2a2f38; --muted:#9aa2b1; --dim:#6b7383; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:28px 22px 70px; font-family:"Microsoft YaHei", system-ui, sans-serif;
+         background:var(--bg); color:var(--fg); }
+  h1 { font-size:22px; margin:0 0 2px; }
+  .sub { color:var(--muted); font-size:12px; margin-bottom:20px; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--ok); display:inline-block; }
+  .dot.off { background:var(--bad); }
+  h2 { font-size:13px; color:var(--muted); margin:26px 0 10px; letter-spacing:.6px; font-weight:600; }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(126px,1fr)); gap:10px; }
+  .stat { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:11px 13px; }
+  .stat .v { font-size:18px; font-weight:600; }
+  .stat .l { font-size:11px; color:var(--muted); margin-top:2px; }
+  .stat .n { font-size:10px; color:var(--dim); margin-top:3px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:12px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; }
+  .card h3 { margin:0 0 12px; font-size:14px; font-weight:600; }
+  .row { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:9px 0; font-size:13px; }
+  .row label { color:var(--muted); }
+  input[type=number], input[type=text], select {
+    background:transparent; color:var(--fg); border:1px solid var(--line); border-radius:8px;
+    padding:5px 8px; font-size:13px; width:110px; font-family:inherit; }
+  select { width:auto; }
+  input:focus, select:focus { outline:none; border-color:var(--acc); }
+  button { cursor:pointer; font-family:inherit; font-size:12.5px; border-radius:8px; padding:6px 12px;
+           border:1px solid var(--line); background:transparent; color:var(--fg); }
+  button:hover { border-color:var(--acc); }
+  button.primary { background:var(--acc); border-color:var(--acc); color:#fff; }
+  button.danger { color:var(--bad); border-color:var(--line); }
+  .btns { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+  .moods { display:flex; gap:7px; flex-wrap:wrap; margin-top:10px; }
+  .moods button.on { background:var(--acc); border-color:var(--acc); color:#fff; }
+  .rules { max-height:230px; overflow:auto; }
+  .rule { display:flex; justify-content:space-between; gap:10px; padding:7px 0; border-bottom:1px dashed var(--line); font-size:12.5px; }
+  .rule:last-child { border-bottom:none; }
+  .rule .meta { color:var(--dim); font-size:11px; white-space:nowrap; }
+  pre { background:rgba(127,127,127,.08); border-radius:8px; padding:10px; max-height:260px; overflow:auto;
+        font-size:11.5px; line-height:1.6; white-space:pre-wrap; word-break:break-all; margin:10px 0 0; }
+  .toast { position:fixed; right:20px; bottom:20px; background:#222; color:#fff; padding:10px 14px;
+           border-radius:10px; font-size:12.5px; opacity:0; transform:translateY(8px);
+           transition:.2s; pointer-events:none; }
+  .toast.show { opacity:1; transform:none; }
+  .acts { font-size:12px; color:var(--muted); line-height:1.9; }
+  .acts b { color:var(--fg); font-weight:600; }
+  a { color:var(--acc); }
+</style>
+</head>
+<body>
+<h1>🐋 鲸鱼娘 · 控制台</h1>
+<div class="sub">
+  <span><span class="dot" id="d-astr"></span> AstrBot</span>
+  <span><span class="dot" id="d-snow"></span> SnowLuma</span>
+  <span><span class="dot" id="d-guard"></span> 守护</span>
+  <span id="now">—</span>
+  <button onclick="loadAll()">刷新</button>
+</div>
+
+<div class="stats" id="stats"></div>
+
+<h2>刷 B站</h2>
+<div class="grid">
+  <div class="card">
+    <h3>频率与判据</h3>
+    <div class="row"><label>自动刷</label><input type="checkbox" id="b-enabled"></div>
+    <div class="row"><label>间隔（分钟）</label><input type="number" id="b-interval" min="20" max="600"></div>
+    <div class="row"><label>抖动（±分钟）</label><input type="number" id="b-jitter" min="0" max="60"></div>
+    <div class="row"><label>判据</label>
+      <select id="b-strict"><option value="loose">宽松</option><option value="strict">严格</option></select></div>
+    <div class="row"><label>看图</label>
+      <select id="b-vision"><option value="on">开</option><option value="off">关</option></select></div>
+    <div class="row"><label>模式</label>
+      <select id="b-mode"><option value="auto">评论</option><option value="dm">只推给我</option><option value="dry">只预览</option></select></div>
+    <div class="row"><label>时段</label><input type="text" id="b-hours" placeholder="12-14,16-22"></div>
+    <div class="btns"><button class="primary" onclick="saveBili()">保存</button>
+      <button onclick="service('restart')">重启 AstrBot</button></div>
+  </div>
+  <div class="card">
+    <h3>今天</h3>
+    <div class="acts" id="today"></div>
+    <div class="btns"><button onclick="showReport()">看今天的日报</button>
+      <button onclick="openURL('file:///C:/QQBot/reports/browse.html')">浏览记录</button></div>
+    <pre id="report" style="display:none"></pre>
+  </div>
+</div>
+
+<h2>黏人（主动找你）</h2>
+<div class="grid">
+  <div class="card">
+    <h3>频率</h3>
+    <div class="row"><label>开着</label><input type="checkbox" id="d-enabled"></div>
+    <div class="row"><label>最短（分钟）</label><input type="number" id="d-min" min="10" max="600"></div>
+    <div class="row"><label>最长（分钟）</label><input type="number" id="d-max" min="10" max="600"></div>
+    <div class="row"><label>每天上限</label><input type="number" id="d-maxday" min="1" max="40"></div>
+    <div class="btns"><button class="primary" onclick="saveDM()">保存</button></div>
+  </div>
+  <div class="card">
+    <h3>今天的心情</h3>
+    <div class="acts"><b id="mood-name">—</b><br><span id="mood-note"></span></div>
+    <div class="moods" id="moods"></div>
+    <div class="btns"><button onclick="rerollMood()">随机换一个</button></div>
+  </div>
+</div>
+
+<h2>服务</h2>
+<div class="card">
+  <div class="btns">
+    <button class="primary" onclick="service('start')">启动全部</button>
+    <button class="danger" onclick="service('stop')">停止全部</button>
+    <button onclick="service('restart')">重启 AstrBot</button>
+    <button onclick="service('guard')">启动守护</button>
+    <button onclick="openURL('http://127.0.0.1:6185')">AstrBot 面板</button>
+    <button onclick="openURL('http://127.0.0.1:5099')">SnowLuma 面板</button>
+  </div>
+</div>
+
+<h2>她学到的规则</h2>
+<div class="card">
+  <div class="rules" id="rules"></div>
+</div>
+
+<h2>日志</h2>
+<div class="card">
+  <div class="row" style="justify-content:flex-start">
+    <label>来源</label>
+    <select id="log-src" onchange="loadLog()">
+      <option value="watchdog">守护</option>
+      <option value="astrbot">AstrBot</option>
+    </select>
+    <button onclick="loadLog()">刷新</button>
+  </div>
+  <pre id="log">加载中…</pre>
+</div>
+
+<h2>最近的往来</h2>
+<div class="card"><div class="acts" id="activity">—</div></div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const TOKEN = "__TOKEN__";
+const $ = id => document.getElementById(id);
+function toast(msg) {
+  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(window._tt); window._tt = setTimeout(() => t.classList.remove("show"), 1800);
+}
+function openURL(u) { window.open(u, "_blank"); }
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, {
+    headers: { "Content-Type": "application/json", "X-Token": TOKEN },
+    ...opts,
+  });
+  return await r.json();
+}
+
+function setDot(id, ok) {
+  const el = $(id); el.classList.toggle("off", !ok);
+}
+
+function stat(label, value, note) {
+  return `<div class="stat"><div class="v">${value}</div><div class="l">${label}</div><div class="n">${note || ""}</div></div>`;
+}
+
+function fmtHours(h) {
+  if (!Array.isArray(h)) return "";
+  return h.map(([a, b]) => `${a}-${b}`).join(",");
+}
+function parseHours(s) {
+  return s.split(",").map(x => x.trim()).filter(Boolean).map(x => {
+    const [a, b] = x.split("-").map(Number);
+    return [a, b];
+  }).filter(([a, b]) => !isNaN(a) && !isNaN(b));
+}
+
+async function loadAll() {
+  const d = await api("/api/status");
+  $("now").textContent = d.now;
+  setDot("d-astr", d.services.astrbot);
+  setDot("d-snow", d.services.snowluma);
+  setDot("d-guard", d.services.watchdog);
+
+  const m = d.mood || {};
+  $("stats").innerHTML = [
+    stat("今天心情", m.mood || "—", m.note || "还没生成"),
+    stat("今天已评论", d.counts.today_comments, "B站"),
+    stat("规则", d.counts.rules, "从你话里学的"),
+    stat("长期记忆", d.counts.memory, "条视频"),
+    stat("表情包", d.counts.stickers, `节选 ${d.counts.clips} / 整曲 ${d.counts.fulls}`),
+    stat("刷B站", d.push.enabled ? "开" : "关", `${d.push.interval_minutes || "?"} 分钟一次`),
+    stat("黏人", d.dm.enabled ? "开" : "关", `${d.dm.min_minutes}-${d.dm.max_minutes} 分钟`),
+  ].join("");
+
+  $("b-enabled").checked = !!d.push.enabled;
+  $("b-interval").value = d.push.interval_minutes ?? 120;
+  $("b-jitter").value = d.push.jitter_minutes ?? 20;
+  $("b-strict").value = d.push.strictness || "loose";
+  $("b-vision").value = d.push.vision_enable === false ? "off" : "on";
+  $("b-mode").value = d.push.mode || "auto";
+  $("b-hours").value = fmtHours(d.push.active_hours);
+
+  $("d-enabled").checked = !!d.dm.enabled;
+  $("d-min").value = d.dm.min_minutes ?? 45;
+  $("d-max").value = d.dm.max_minutes ?? 90;
+  $("d-maxday").value = d.dm.max_per_day ?? 14;
+
+  $("mood-name").textContent = m.mood || "还没生成";
+  $("mood-note").textContent = m.note || "";
+  const moods = ["开心", "元气", "平静", "有点累", "有点丧", "炸毛"];
+  $("moods").innerHTML = moods.map(x =>
+    `<button class="${x === m.mood ? "on" : ""}" onclick="setMood('${x}')">${x}</button>`).join("");
+
+  $("rules").innerHTML = (d.rules || []).length
+    ? d.rules.map(r => `<div class="rule"><span>${r.rule}</span>
+        <span class="meta">${r.scope} · ${r.status} <button class="danger" onclick="delRule('${r.id}')">删</button></span></div>`).join("")
+    : `<div class="acts">还没有规则。跟她说「以后…」或「别…」就会学。</div>`;
+
+  $("today").innerHTML = `今天评论 <b>${d.counts.today_comments}</b> 条 ｜ 长期记忆 <b>${d.counts.memory}</b> 条<br>
+     心跳 <b>${(d.heartbeat && d.heartbeat.at) || "—"}</b>`;
+
+  $("activity").innerHTML = (d.activity || []).length
+    ? d.activity.slice().reverse().map(a => {
+        const t = (a.t || "").slice(11, 16);
+        if (a.kind === "comment") return `<b>${t}</b> 在B站《${(a.title || "").slice(0, 22)}》评论了：${(a.text || "").slice(0, 40)}`;
+        return `<b>${t}</b> 推给你：${(a.text || "").slice(0, 50)}`;
+      }).join("<br>")
+    : "—";
+}
+
+async function saveBili() {
+  const body = {
+    enabled: $("b-enabled").checked,
+    interval_minutes: Number($("b-interval").value) || 120,
+    jitter_minutes: Number($("b-jitter").value) || 0,
+    strictness: $("b-strict").value,
+    vision_enable: $("b-vision").value === "on",
+    mode: $("b-mode").value,
+    active_hours: parseHours($("b-hours").value),
+  };
+  const r = await api("/api/config/bili", { method: "POST", body: JSON.stringify(body) });
+  toast(r.ok ? "已保存（下一轮生效）" : "保存失败");
+  loadAll();
+}
+
+async function saveDM() {
+  const body = {
+    enabled: $("d-enabled").checked,
+    min_minutes: Number($("d-min").value) || 45,
+    max_minutes: Number($("d-max").value) || 90,
+    max_per_day: Number($("d-maxday").value) || 14,
+  };
+  const r = await api("/api/config/dm", { method: "POST", body: JSON.stringify(body) });
+  toast(r.ok ? "已保存" : "保存失败");
+  loadAll();
+}
+
+async function rerollMood() {
+  const r = await api("/api/mood/reroll", { method: "POST", body: "{}" });
+  toast(r.ok ? `换成：${r.mood.mood}` : "换失败");
+  loadAll();
+}
+
+async function setMood(m) {
+  const r = await api("/api/mood/set", { method: "POST", body: JSON.stringify({ mood: m }) });
+  toast(r.ok ? `设为：${m}` : "设置失败");
+  loadAll();
+}
+
+async function delRule(id) {
+  if (!confirm("删掉这条规则？")) return;
+  const r = await api("/api/rules/delete", { method: "POST", body: JSON.stringify({ id }) });
+  toast(r.ok ? "已删除" : "删除失败");
+  loadAll();
+}
+
+async function service(action) {
+  if (action === "stop" && !confirm("确定停止全部服务？")) return;
+  const r = await api("/api/service", { method: "POST", body: JSON.stringify({ action }) });
+  toast(r.ok ? "已执行：" + action : "失败：" + (r.error || ""));
+  setTimeout(loadAll, 1500);
+}
+
+async function loadLog() {
+  const src = $("log-src").value;
+  const r = await api(`/api/logs?name=${src}&lines=80`);
+  $("log").textContent = r.text || "（空）";
+}
+
+async function showReport() {
+  const d = new Date();
+  const day = d.toISOString().slice(0, 10);
+  const r = await api(`/api/report?date=${day}`);
+  const el = $("report");
+  el.style.display = "block";
+  el.textContent = r.text || "（没有）";
+}
+
+loadAll();
+loadLog();
+setInterval(loadAll, 8000);
+</script>
+</body>
+</html>
