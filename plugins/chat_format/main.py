@@ -29,9 +29,9 @@ from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.message_components import Plain
 
 
-def fix_punct(text: str) -> str:
+def fix_punct(text: str, split_long_lines: bool = True, end_punct: bool = False) -> str:
     if _shared_fix is not None:
-        return _shared_fix(text)
+        return _shared_fix(text, split_long_lines=split_long_lines, end_punct=end_punct)
     s = text
     # 1) 半角标点 -> 全角（数字之间的 1,000 / 3.14 不动）
     s = re.sub(r"(?<!\d),(?!\d)", "，", s)

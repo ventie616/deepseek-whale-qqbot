@@ -37,7 +37,12 @@ def add_line_end_punct(line: str) -> str:
         return s
     if QUESTION_TAIL.search(s):
         return s + "？"
-    if any(w in s for w in QUESTION_WORDS) and not any(m in s for m in STATEMENT_MARKERS):
+    # 疑问词只在短句里当问句，长句容易误加（"这谁，本鲸对不上号" 不是提问）
+    if len(s) <= 8 and any(w in s for w in QUESTION_WORDS) and not any(
+        m in s for m in STATEMENT_MARKERS
+    ):
+        return s + "？"
+    if len(s) <= 12 and re.search(r"(什么|怎么|为什么|哪|谁|多少|几|啥)$", s):
         return s + "？"
     if any(w in s for w in EXCLAIM_WORDS):
         return s + "！"
@@ -54,18 +59,30 @@ def fix_punct(text: str, split_long_lines: bool = True, end_punct: bool = False)
     s = re.sub(r"(?<=[A-Za-z0-9])\。([A-Za-z]{2,})", r".\1", s)
 
     # 0.1) 然后把 URL 挖出来保护起来，避免冒号/点被转成全角
+    holders: list[tuple[str, str]] = []
+
+    # Windows 路径也保护（C:\QQBot\a.py 里的冒号和点不能动）
+    for i, pth in enumerate(re.findall(r"[A-Za-z]:\\[^\s，。！？、；]*", s)):
+        token = f"\x00PATH{i}\x00"
+        holders.append((token, pth))
+        s = s.replace(pth, token)
+
     urls = re.findall(r"https?://[^\s\u4e00-\u9fff]+", s)
-    holders = []
     for i, u in enumerate(urls):
         token = f"\x00URL{i}\x00"
         holders.append((token, u))
         s = s.replace(u, token)
 
-    # 1) 半角标点 -> 全角（数字之间不动）
-    s = re.sub(r"(?<!\d),(?!\d)", "，", s)
-    s = re.sub(r"(?<!\d)\.(?!\d)", "。", s)
-    s = s.replace("?", "？").replace("!", "！").replace(";", "；").replace(":", "：")
-    s = s.replace("(", "（").replace(")", "）")
+    # 1) 半角标点 -> 全角：只在中文字符挨着时才换，别把英文/代码改坏
+    CJK = r"[\u4e00-\u9fff]"
+    s = re.sub(rf"(?<={CJK}),(?!\d)|(?<!\d),(?={CJK})", "，", s)
+    s = re.sub(rf"(?<={CJK})\.(?![\d.])|(?<![\d.])\.(?={CJK})", "。", s)
+    s = re.sub(rf"(?<={CJK})[?](?![?])|[?](?={CJK})", "？", s)
+    s = re.sub(rf"(?<={CJK})[!](?![!])|[!](?={CJK})", "！", s)
+    s = re.sub(rf"(?<={CJK});|;(?={CJK})", "；", s)
+    s = re.sub(rf"(?<={CJK}):|:(?={CJK})", "：", s)
+    s = re.sub(rf"(?<={CJK})\(|\((?={CJK})", "（", s)
+    s = re.sub(rf"(?<={CJK})\)|\)(?={CJK})", "）", s)
 
     # 2) 标点前后不留空格
     s = re.sub(r"[ \t]+([，。！？、；：])", r"\1", s)

@@ -364,12 +364,20 @@ def token_stats(days: int = 14) -> dict:
     today = date.today()
     today_s = today.isoformat()
     day_list = [(today - timedelta(days=i)).isoformat() for i in range(days - 1, -1, -1)]
+    def _zero():
+        return {"prompt": 0, "completion": 0, "cached": 0, "total": 0, "calls": 0, "cost": 0.0}
+
     agg = {
-        "today": {"prompt": 0, "completion": 0, "cached": 0, "total": 0, "calls": 0, "cost": 0.0},
+        "today": _zero(),
         "hourly": [0] * 24,
         "by_model": {},
         "by_source": {},
         "daily": {d: 0 for d in day_list},
+        # 对话 vs 刷B站 分开
+        "cats": {
+            "chat": {"today": _zero(), "daily": {d: 0 for d in day_list}, "hourly": [0] * 24},
+            "bili": {"today": _zero(), "daily": {d: 0 for d in day_list}, "hourly": [0] * 24},
+        },
     }
     if not TOKEN_LOG.exists():
         return {"ok": True, "empty": True, **agg}
@@ -384,8 +392,10 @@ def token_stats(days: int = 14) -> dict:
         ts = str(r.get("t") or "")
         day = ts[:10]
         total = int(r.get("total") or 0)
+        cat = "bili" if str(r.get("source")) == "B站" else "chat"
         if day in agg["daily"]:
             agg["daily"][day] += total
+            agg["cats"][cat]["daily"][day] += total
         if day != today_s:
             continue
         prompt = int(r.get("prompt") or 0)
@@ -404,15 +414,33 @@ def token_stats(days: int = 14) -> dict:
             + completion / 1e6 * price["out"]
         )
         try:
-            agg["hourly"][int(ts[11:13])] += total
+            hour = int(ts[11:13])
+            agg["hourly"][hour] += total
+            agg["cats"][cat]["hourly"][hour] += total
         except Exception:
             pass
+        c = agg["cats"][cat]["today"]
+        c["prompt"] += prompt
+        c["completion"] += completion
+        c["cached"] += cached
+        c["total"] += total
+        c["calls"] += 1
+        c["cost"] += (
+            (prompt - cached) / 1e6 * price["miss"]
+            + cached / 1e6 * price["hit"]
+            + completion / 1e6 * price["out"]
+        )
         m = str(r.get("model") or "?")
         src = str(r.get("source") or "?")
         agg["by_model"][m] = agg["by_model"].get(m, 0) + total
         agg["by_source"][src] = agg["by_source"].get(src, 0) + total
 
     agg["today"]["cost"] = round(agg["today"]["cost"], 4)
+    for cat in ("chat", "bili"):
+        agg["cats"][cat]["today"]["cost"] = round(agg["cats"][cat]["today"]["cost"], 4)
+        agg["cats"][cat]["daily_list"] = [
+            {"d": d, "total": agg["cats"][cat]["daily"][d]} for d in day_list
+        ]
     agg["daily_list"] = [{"d": d, "total": agg["daily"][d]} for d in day_list]
     agg["by_model"] = sorted(
         [{"name": k, "total": v} for k, v in agg["by_model"].items()], key=lambda x: -x["total"]

@@ -61,6 +61,8 @@
   .tokbar { flex:1; background:var(--acc); border-radius:3px 3px 0 0; min-height:2px; opacity:.75; position:relative; }
   .tokbar:hover { opacity:1; }
   .tokbar.zero { background:var(--line); opacity:1; }
+  .tokbar.bili { background:#f0a04b; }
+  .tokbar.zero.bili { background:var(--line); }
   .toklabels { display:flex; justify-content:space-between; font-size:11px; color:var(--dim); }
 </style>
 </head>
@@ -79,17 +81,23 @@
 <h2>Token 消耗</h2>
 <div class="grid">
   <div class="card">
-    <h3>今天</h3>
-    <div class="tokchips" id="tok-today"></div>
-    <div class="tokbars" id="tok-hourly"></div>
+    <h3>对话</h3>
+    <div class="tokchips" id="tok-chat"></div>
+    <div class="tokbars" id="tok-chat-hourly"></div>
     <div class="toklabels"><span>0 点</span><span>12 点</span><span>23 点</span></div>
   </div>
   <div class="card">
-    <h3>最近 14 天</h3>
-    <div class="tokbars" id="tok-daily"></div>
-    <div class="toklabels" id="tok-daily-labels"></div>
-    <div class="tokchips" id="tok-split"></div>
+    <h3>刷 B站</h3>
+    <div class="tokchips" id="tok-bili"></div>
+    <div class="tokbars" id="tok-bili-hourly"></div>
+    <div class="toklabels"><span>0 点</span><span>12 点</span><span>23 点</span></div>
   </div>
+</div>
+<div class="card" style="margin-top:16px">
+  <h3>最近 14 天 · 对话 vs 刷B站</h3>
+  <div class="tokbars" id="tok-daily" style="height:82px"></div>
+  <div class="toklabels" id="tok-daily-labels"></div>
+  <div class="tokchips" id="tok-split"></div>
 </div>
 
 <h2>刷 B站</h2>
@@ -282,36 +290,55 @@ function bars(el, values, tipPrefix) {
   }).join("");
 }
 
+function tokChips(el, t) {
+  const hitRate = t.prompt ? Math.round((t.cached || 0) / t.prompt * 100) : 0;
+  el.innerHTML = [
+    `<div class="tokchip"><b>${fmtTok(t.total)}</b>今日 tokens</div>`,
+    `<div class="tokchip"><b>${t.calls || 0}</b>调用</div>`,
+    `<div class="tokchip"><b>${fmtCost(t.cost)}</b>估算</div>`,
+    `<div class="tokchip"><b>${hitRate}%</b>缓存命中</div>`,
+  ].join("");
+}
+
 async function loadTokens() {
   const d = await api("/api/tokens");
   if (!d.ok) return;
-  const t = d.today || {};
-  const hitRate = t.prompt ? Math.round((t.cached || 0) / t.prompt * 100) : 0;
-  $("tok-today").innerHTML = [
-    `<div class="tokchip"><b>${fmtTok(t.total)}</b>今日 tokens</div>`,
-    `<div class="tokchip"><b>${t.calls || 0}</b>调用次数</div>`,
-    `<div class="tokchip"><b>${fmtCost(t.cost)}</b>估算花费</div>`,
-    `<div class="tokchip"><b>${hitRate}%</b>缓存命中</div>`,
-    `<div class="tokchip"><b>${fmtTok(t.prompt)}</b>输入</div>`,
-    `<div class="tokchip"><b>${fmtTok(t.completion)}</b>输出</div>`,
-  ].join("");
+  const chat = (d.cats || {}).chat || { today: {}, hourly: [], daily_list: [] };
+  const bili = (d.cats || {}).bili || { today: {}, hourly: [], daily_list: [] };
 
-  bars($("tok-hourly"), d.hourly || [], "这小时");
+  tokChips($("tok-chat"), chat.today || {});
+  tokChips($("tok-bili"), bili.today || {});
+  bars($("tok-chat-hourly"), chat.hourly || [], "对话");
+  bars($("tok-bili-hourly"), bili.hourly || [], "B站");
 
-  const daily = d.daily_list || [];
-  bars($("tok-daily"), daily.map(x => x.total), "当天");
+  const cd = chat.daily_list || [];
+  const bd = bili.daily_list || [];
+  const max = Math.max(1, ...cd.map(x => x.total), ...bd.map(x => x.total));
+  const rows = [];
+  for (let i = 0; i < Math.max(cd.length, bd.length); i++) {
+    const c = (cd[i] || {}).total || 0;
+    const b = (bd[i] || {}).total || 0;
+    const hc = Math.max(1, Math.round(c / max * 100));
+    const hb = Math.max(1, Math.round(b / max * 100));
+    rows.push(
+      `<div style="flex:1;display:flex;align-items:flex-end;gap:2px;height:100%">` +
+      `<div class="${c ? 'tokbar' : 'tokbar zero'}" style="height:${hc}%" title="对话 ${c.toLocaleString()}"></div>` +
+      `<div class="${b ? 'tokbar bili' : 'tokbar zero bili'}" style="height:${hb}%" title="B站 ${b.toLocaleString()}"></div>` +
+      `</div>`
+    );
+  }
+  $("tok-daily").innerHTML = rows.join("");
   $("tok-daily-labels").innerHTML =
-    `<span>${(daily[0]?.d || "").slice(5)}</span><span>${(daily[daily.length - 1]?.d || "").slice(5)}</span>`;
+    `<span>${(cd[0]?.d || "").slice(5)}</span><span>${(cd[cd.length - 1]?.d || "").slice(5)}</span>`;
 
-  const sum = (arr) => arr.reduce((a, b) => a + b.total, 0) || 1;
-  const parts = [];
-  for (const m of (d.by_model || []).slice(0, 3)) {
-    parts.push(`<div class="tokchip"><b>${fmtTok(m.total)}</b>${m.name}</div>`);
-  }
-  for (const s of (d.by_source || []).slice(0, 3)) {
-    parts.push(`<div class="tokchip"><b>${Math.round(s.total / sum(d.by_source) * 100)}%</b>${s.name}</div>`);
-  }
-  $("tok-split").innerHTML = parts.join("");
+  const ct = chat.today?.total || 0, bt = bili.today?.total || 0;
+  const sum = ct + bt || 1;
+  $("tok-split").innerHTML = [
+    `<div class="tokchip"><b>${fmtTok(ct)}</b>对话 ${Math.round(ct / sum * 100)}%</div>`,
+    `<div class="tokchip"><b>${fmtTok(bt)}</b>B站 ${Math.round(bt / sum * 100)}%</div>`,
+    `<div class="tokchip"><b>${fmtTok(ct + bt)}</b>今天合计</div>`,
+    `<div class="tokchip"><b>${fmtCost((chat.today?.cost || 0) + (bili.today?.cost || 0))}</b>估算合计</div>`,
+  ].join("");
 }
 
 async function loadAll() {
