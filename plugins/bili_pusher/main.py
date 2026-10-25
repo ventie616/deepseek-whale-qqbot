@@ -67,6 +67,8 @@ DEFAULTS = {
     # QQ 回退
     "target_qq": "YOUR_QQ",
     "target_name": "YOUR_BILI_NAME",
+    # 推到 QQ 时发几层：1=视频信息，2=+为什么值得看，3=+评论，4=+链接
+    "qq_layers": 2,
 }
 
 UA = (
@@ -1434,7 +1436,12 @@ class Main(star.Star):
             layers.append("这轮没发出去" + (f"（{note}）" if note else ""))
         if bvid:
             layers.append(f"https://www.bilibili.com/video/{bvid}")
-        return layers
+        # 只发前 N 层（默认 2：视频是什么 / 为什么值得看）
+        try:
+            keep = int(self.cfg.get("qq_layers", 2))
+        except Exception:
+            keep = 2
+        return layers[: max(1, min(keep, len(layers)))]
 
     async def _notify_bili_layers(self, video: dict, comment: str, note: str = "") -> bool:
         """分层发送：每条之间隔 0.9 秒，避免一次甩一大团。"""
