@@ -77,10 +77,22 @@ class Main(star.Star):
             "https://api.bilibili.com/x/web-interface/nav",
             headers={"User-Agent": UA, "Referer": "https://www.bilibili.com/", "Cookie": cookie},
         )
-        try:
-            d = json.loads(urllib.request.urlopen(req, timeout=20).read())
-        except Exception as exc:  # noqa: BLE001
-            return {"ok": False, "reason": f"请求失败：{exc}"}
+        d = None
+        last_err = ""
+        for attempt in range(3):
+            try:
+                d = json.loads(urllib.request.urlopen(req, timeout=20).read())
+                # 风控/限流：等一下再试，不要直接判过期
+                if d.get("code") in (-412, -509, -799):
+                    last_err = f"code={d.get('code')}"
+                    time.sleep(2 + attempt * 2)
+                    continue
+                break
+            except Exception as exc:  # noqa: BLE001
+                last_err = f"请求失败：{exc}"
+                time.sleep(2 + attempt * 2)
+        if not d:
+            return {"ok": False, "reason": last_err or "请求失败"}
         data = d.get("data") or {}
         if d.get("code") == 0 and data.get("isLogin"):
             return {

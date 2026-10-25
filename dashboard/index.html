@@ -93,6 +93,24 @@
   </div>
 </div>
 
+<h2>B站账号</h2>
+<div class="grid">
+  <div class="card">
+    <h3>登录状态</h3>
+    <div class="acts" id="bili-info">读取中…</div>
+    <div class="btns">
+      <button class="primary" onclick="openLoginUI()">打开登录面板</button>
+      <button onclick="loadBili(true)">重新检查</button>
+      <button onclick="openURL('https://www.bilibili.com')">打开B站</button>
+      <button id="bili-space-btn" onclick="openURL(document.getElementById('bili-space-btn').dataset.url || 'https://www.bilibili.com')">我的空间</button>
+    </div>
+  </div>
+  <div class="card">
+    <h3>最近评论</h3>
+    <div class="acts" id="bili-recent">读取中…</div>
+  </div>
+</div>
+
 <h2>黏人（主动找你）</h2>
 <div class="grid">
   <div class="card">
@@ -310,6 +328,37 @@ async function showReport() {
   el.textContent = r.text || "（没有）";
 }
 
+async function loadBili(force) {
+  try {
+    const d = force
+      ? await api("/api/bili/check", { method: "POST", body: "{}" })
+      : await fetch("/api/bili", { headers: { "X-Token": TOKEN } }).then(r => r.json());
+    const ok = d.logged_in;
+    $("bili-info").innerHTML =
+      `<b style="color:${ok ? "var(--ok)" : "var(--bad)"}">${ok ? "● 已登录" : "○ 未登录"}</b>` +
+      ` ｜ ${d.name || "（未知昵称）"} ｜ Lv${d.level || "?"} ｜ UID ${d.uid || "—"}<br>` +
+      `<span style="color:var(--dim)">${d.message || ""}</span>` +
+      (d.last_check !== undefined ? `<br><span style="color:var(--dim)">每日自检：${d.last_check ? "正常" : "失败"}</span>` : "");
+    const btn = $("bili-space-btn");
+    if (d.space) btn.dataset.url = d.space;
+    const rows = d.recent || [];
+    $("bili-recent").innerHTML = rows.length
+      ? rows.map(x => `<div class="rule"><span><a href="${x.url}" target="_blank">${(x.title || x.bvid).slice(0, 26)}</a><br>
+          <span style="color:var(--dim);font-size:11px">${(x.comment || "").slice(0, 34)}</span></span>
+          <span class="meta">${(x.t || "").slice(5, 16)}</span></div>`).join("")
+      : "还没有评论记录";
+    if (force) toast(d.logged_in ? "自检通过" : "自检：未登录");
+  } catch (e) {
+    $("bili-info").textContent = "读取失败";
+  }
+}
+
+async function openLoginUI() {
+  const r = await api("/api/bili/login-ui", { method: "POST", body: "{}" });
+  if (r.ok) { openURL(r.url); toast(r.already ? "登录面板本来就在开着" : "已启动登录面板"); }
+  else toast("启动失败：" + (r.error || ""));
+}
+
 async function brush(mode) {
   const el = $("action");
   el.style.display = "block";
@@ -343,8 +392,10 @@ async function testMsg() {
 }
 
 loadAll();
+loadBili();
 loadLog();
 setInterval(loadAll, 8000);
+setInterval(() => loadBili(), 60000);
 </script>
 </body>
 </html>

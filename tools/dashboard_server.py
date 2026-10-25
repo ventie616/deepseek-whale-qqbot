@@ -142,6 +142,11 @@ def status() -> dict:
         },
         "heartbeat": hb,
         "activity": acts,
+        "bili": {
+            "has_cookie": bool((read_json(ROOT / "bili_account.json", {}) or {}).get("sessdata")),
+            "uid": str((read_json(ROOT / "bili_account.json", {}) or {}).get("dedeuserid") or ""),
+            "last_check": (read_json(ROOT / "bili_login_state.json", {}) or {}).get("last_ok"),
+        },
     }
 
 
@@ -178,6 +183,107 @@ def send_qq(text: str) -> dict:
         return {"ok": d.get("status") == "ok" or d.get("retcode") == 0, "raw": d}
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+
+
+def bili_account() -> dict:
+    acc = read_json(ROOT / "bili_account.json", {}) or {}
+    state = read_json(ROOT / "bili_login_state.json", {}) or {}
+    out = {
+        "has_cookie": bool(acc.get("sessdata")),
+        "uid": str(acc.get("dedeuserid") or ""),
+        "name": "",
+        "level": 0,
+        "logged_in": False,
+        "message": "",
+        "last_check": state.get("last_ok"),
+        "last_check_at": state.get("checked_at") or state.get("at") or "",
+        "space": "",
+    }
+    if out["uid"]:
+        out["space"] = f"https://space.bilibili.com/{out['uid']}"
+    if not out["has_cookie"]:
+        out["message"] = "还没填 cookie"
+        return out
+    cookie = f"SESSDATA={acc.get('sessdata','')}; bili_jct={acc.get('bili_jct','')}; DedeUserID={out['uid']}"
+    req = urllib.request.Request(
+        "https://api.bilibili.com/x/web-interface/nav",
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36",
+            "Referer": "https://www.bilibili.com/",
+            "Cookie": cookie,
+        },
+    )
+    d = None
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(req, timeout=15) as r:
+                d = json.loads(r.read())
+            if d.get("code") in (-412, -509, -799):
+                time.sleep(1.5 + attempt)
+                d = None
+                continue
+            break
+        except Exception as exc:  # noqa: BLE001
+            out["message"] = f"查询失败：{type(exc).__name__}（第 {attempt + 1} 次）"
+            time.sleep(1.5 + attempt)
+    if d is None:
+        return out
+    data = d.get("data") or {}
+    out["logged_in"] = bool(d.get("code") == 0 and data.get("isLogin"))
+    out["name"] = data.get("uname") or ""
+    out["level"] = int((data.get("level_info") or {}).get("current_level") or 0)
+    out["message"] = "登录正常" if out["logged_in"] else f"未登录（code {d.get('code')}）"
+    if out["logged_in"]:
+        out["mid"] = data.get("mid")
+    return out
+
+
+def recent_commented(limit: int = 5) -> list[dict]:
+    p = ROOT / "bili_watched.jsonl"
+    if not p.exists():
+        return []
+    seen, rows = set(), []
+    for line in reversed(p.read_text(encoding="utf-8", errors="replace").splitlines()):
+        if not line.strip():
+            continue
+        try:
+            d = json.loads(line)
+        except Exception:
+            continue
+        bv = d.get("bvid")
+        if not bv or bv in seen or not d.get("comment"):
+            continue
+        seen.add(bv)
+        rows.append({
+            "bvid": bv,
+            "title": d.get("title") or "",
+            "comment": d.get("comment") or "",
+            "t": d.get("t") or "",
+            "url": f"https://www.bilibili.com/video/{bv}",
+        })
+        if len(rows) >= limit:
+            break
+    return rows
+
+
+def start_login_ui() -> dict:
+    """B站 cookie 登录面板（127.0.0.1:8777），没跑就拉起来。"""
+    if port_up(8777):
+        return {"ok": True, "url": "http://127.0.0.1:8777/", "already": True}
+    try:
+        subprocess.Popen(
+            [str(ROOT / "venv" / "Scripts" / "pythonw.exe"), str(ROOT / "tools" / "bili_login_ui.py")],
+            cwd=str(ROOT),
+            creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
+            close_fds=True,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+    for _ in range(30):
+        if port_up(8777):
+            return {"ok": True, "url": "http://127.0.0.1:8777/", "already": False}
+        time.sleep(0.2)
+    return {"ok": True, "url": "http://127.0.0.1:8777/", "already": False, "slow": True}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -248,6 +354,11 @@ class Handler(BaseHTTPRequestHandler):
             text = fp.read_text(encoding="utf-8", errors="replace").splitlines()[-lines:]
             clean = [re.sub(r"\x1b\[[0-9;]*m", "", x) for x in text]
             self._json({"ok": True, "file": str(fp), "text": "\n".join(clean)})
+            return
+        if path == "/api/bili":
+            data = bili_account()
+            data["recent"] = recent_commented(5)
+            self._json(data)
             return
         if path == "/api/action/brush":
             q = parse_qs(u.query)
@@ -329,6 +440,24 @@ class Handler(BaseHTTPRequestHandler):
             data["rules"] = [r for r in (data.get("rules") or []) if r.get("id") != rid]
             self._json({"ok": write_json(ROOT / "learned_rules.json", data),
                         "removed": before - len(data["rules"])})
+            return
+
+        if u.path == "/api/bili/check":
+            d = bili_account()
+            write_json(
+                ROOT / "bili_login_state.json",
+                {
+                    "last_check": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "last_ok": bool(d.get("logged_in")),
+                    "last_status": "ok" if d.get("logged_in") else "expired",
+                },
+            )
+            d["recent"] = recent_commented(3)
+            self._json(d)
+            return
+
+        if u.path == "/api/bili/login-ui":
+            self._json(start_login_ui())
             return
 
         if u.path == "/api/action/brush":
