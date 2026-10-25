@@ -87,7 +87,7 @@
 ## 包结构
 
 ```
-plugins/            13 个 AstrBot 插件
+plugins/            14 个 AstrBot 插件
   bili_pusher       刷B站 + 评论 + 记忆 + 日报（核心）
   bili_tools        B站查询工具 ×8
   sticker_sender    五维索引 + 语义检索选图
