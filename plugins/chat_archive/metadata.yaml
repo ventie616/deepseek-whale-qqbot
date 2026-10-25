@@ -1,0 +1,4 @@
+name: chat_archive
+desc: 聊天存档（按天 JSONL，零 token）+ 关键词检索工具
+author: local
+version: 1.0.0

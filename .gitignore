@@ -3,14 +3,14 @@
 !/data/anime_kb/
 /data/anime_kb/*
 !/data/anime_kb/*.json
-logs/
+/logs/
 *.log
-chat_archive/
-reports/
+/chat_archive/
+/reports/
 previews/
-downloads/
-sticker_inbox/
-stickers/
+/downloads/
+/sticker_inbox/
+/stickers/
 /voice_clips/
 
 # 密钥
