@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import pathlib
+import re
 import subprocess
 import sys
 import zipfile
@@ -62,15 +63,19 @@ def main() -> int:
     print(f"  文件 {len(names)} 个 / {out.stat().st_size/1024:.0f} KB")
     print(f"  含 .git: {'是（异常）' if any('.git/' in n for n in names) else '否'}")
     # 顺手查一下包里有没有明显敏感串
-    patterns = ("YOUR_QQ", "YOUR_BILI_UID", "SESSDATA=")
+    patterns = ("YOUR_QQ", "YOUR_BILI_UID", "BOT_QQ", "YOUR_BILI_NAME")
     hits = []
     with zipfile.ZipFile(out) as z:
         for n in names:
+            if n.endswith(("make_release.py",)):
+                continue  # 扫描器自己带着这些串
             if n.endswith((".py", ".md", ".json", ".html", ".bat", ".txt")):
                 t = z.read(n).decode("utf-8", "replace")
                 for pat in patterns:
                     if pat in t:
                         hits.append(f"{n}: {pat}")
+                if re.search(r"SESSDATA=[0-9a-f%]{20,}", t):
+                    hits.append(f"{n}: 疑似 SESSDATA 值")
     if hits:
         print("⚠️ 包里有敏感串：")
         for h in hits[:10]:
