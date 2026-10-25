@@ -154,14 +154,11 @@ def main() -> int:
 
     repo_info = api(f"/repos/{repo}")
     print(f"目标仓库: {repo_info['full_name']} ({'private' if repo_info['private'] else 'public'})")
-    if repo_info.get("size", 0) > 0:
-        print("⚠️ 仓库不是空的，先停一下")
-        return 1
 
     rows = commits(cwd)
-    print(f"本地提交 {len(rows)} 个，开始重放…")
-
     base = None
+    skip = 0
+
     if repo_info.get("size", 0) == 0:
         try:
             base = seed_empty_repo(cwd, repo, args.branch)
@@ -169,11 +166,42 @@ def main() -> int:
         except RuntimeError as exc:
             print("初始化失败:", exc)
             return 1
+    else:
+        # 增量：远程每个提交都有 tree；本地按 tree 对齐，找最后一个已存在的
+        remote = []
+        page = 1
+        while True:
+            chunk = api(f"/repos/{repo}/commits?per_page=100&page={page}")
+            if not chunk:
+                break
+            remote += chunk
+            if len(chunk) < 100:
+                break
+            page += 1
+        remote_by_tree = {c["commit"]["tree"]["sha"]: c["sha"] for c in remote}
+        last_local_idx = -1
+        for i, c in enumerate(rows):
+            tree = git("rev-parse", f"{c['sha']}^{{tree}}", cwd=cwd).strip()
+            if tree in remote_by_tree:
+                last_local_idx = i
+                base = remote_by_tree[tree]
+        if last_local_idx < 0:
+            print("⚠️ 远程历史与本地对不上（可能被改写过），无法增量推送")
+            return 1
+        skip = last_local_idx + 1
+        print(f"远程已有 {len(remote)} 个提交；本地对齐到第 {skip} 个，只推后面的")
+        if skip >= len(rows):
+            print("远程已经是最新，没有要推的提交")
+            return 0
+
+    print(f"本地提交 {len(rows)} 个，开始重放…")
 
     blobs: set[str] = set()
     trees: dict[str, str] = {}
     sha_map: dict[str, str] = {}
     for i, c in enumerate(rows, 1):
+        if i <= skip:
+            continue
         files = blob_shas(cwd, c["sha"])
         for sha in set(files.values()):
             upload_blob(cwd, sha, blobs, repo)
@@ -181,6 +209,8 @@ def main() -> int:
         parents = [sha_map[p] for p in c["parents"] if p in sha_map]
         if not parents and base:
             parents = [base]
+        if i == skip + 1 and base and base not in parents:
+            parents = [base] + parents
         body = {
             "message": c["message"],
             "tree": tree,
@@ -190,7 +220,7 @@ def main() -> int:
         }
         d = api(f"/repos/{repo}/git/commits", "POST", body)
         sha_map[c["sha"]] = d["sha"]
-        if i % 5 == 0 or i == len(rows):
+        if i % 5 == 0 or i == len(rows) or i == skip + 1:
             print(f"  {i}/{len(rows)}  {d['sha'][:8]}  {c['message'].splitlines()[0][:46]}")
 
     head = sha_map[rows[-1]["sha"]]
