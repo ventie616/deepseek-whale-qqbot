@@ -19,7 +19,29 @@ from __future__ import annotations
 import re
 
 
-def fix_punct(text: str, split_long_lines: bool = True) -> str:
+
+QUESTION_TAIL = re.compile(r"(吗|呢|么|嘛|不|没)$")
+QUESTION_WORDS = ("谁", "什么", "怎么", "为什么", "哪", "几", "多少", "干嘛", "啥",
+                  "要不要", "是不是", "有没有", "对不对", "行不行", "能不能")
+STATEMENT_MARKERS = ("没有", "没什么", "谁都不", "什么都", "什么时候都")
+EXCLAIM_WORDS = ("救命", "离谱", "离大谱", "绝了", "好家伙", "可恶", "烦死", "气死", "笑死", "啊啊", "哇", "逆天")
+
+
+def add_line_end_punct(line: str) -> str:
+    """行尾补标点：问句加「？」，强情绪加「！」，其余不加（她的风格）。"""
+    s = line.rstrip()
+    if not s or re.search(r"[。！？…~～]$", s):
+        return s
+    if QUESTION_TAIL.search(s):
+        return s + "？"
+    if any(w in s for w in QUESTION_WORDS) and not any(m in s for m in STATEMENT_MARKERS):
+        return s + "？"
+    if any(w in s for w in EXCLAIM_WORDS):
+        return s + "！"
+    return s
+
+
+def fix_punct(text: str, split_long_lines: bool = True, end_punct: bool = False) -> str:
     s = str(text or "")
     if not s.strip():
         return s
@@ -61,4 +83,8 @@ def fix_punct(text: str, split_long_lines: bool = True) -> str:
     # 7) 空行压单换行 + 行内多空格收敛
     s = re.sub(r"[ \t]*\n[ \t]*(?:\n[ \t]*)+", "\n", s)
     s = re.sub(r"[ \t]{2,}", " ", s)
+
+    # 8) 行尾标点（问句 ？ / 强情绪 ！）
+    if end_punct:
+        s = "\n".join(add_line_end_punct(x) for x in s.split("\n"))
     return s.strip()

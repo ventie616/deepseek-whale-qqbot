@@ -83,13 +83,14 @@ class Main(star.Star):
                 if not isinstance(comp, Plain) or not comp.text:
                     rebuilt.append(comp)
                     continue
-                new = fix_punct(comp.text)
+                new = fix_punct(comp.text, end_punct=True)
                 if new != comp.text:
                     changed += 1
                 # 多行拆成多个 Plain：每行一个消息段，分段回复会按段发送，
                 # 不再依赖 split_words 里有没有 "\n"
                 lines = [x for x in new.split("\n") if x.strip()]
-                if len(lines) > 1:
+                # 长文本不拆（跟 AstrBot 的 words_count_threshold 一致）
+                if len(lines) > 1 and len(new) <= 120:
                     rebuilt.extend(Plain(x) for x in lines)
                     changed += 1
                 else:
