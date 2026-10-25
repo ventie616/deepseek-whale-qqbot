@@ -38,6 +38,9 @@ def fix_punct(text: str) -> str:
     s = re.sub(r"。{2,}", "。", s)
     # 5) 句末不加句号（她的风格），但保留问号/感叹号
     s = re.sub(r"。$", "", s, flags=re.M)
+    # 5.5) 行内用空格断句：「刷到个视频 配今天正好」-> 逗号
+    s = re.sub(r"(?<=[\u4e00-\u9fff]) (?=[\u4e00-\u9fff])", "，", s)
+
     # 6) 一行里逗号太多就拆行（最多 2 个逗号）
     out_lines = []
     for line in s.split("\n"):

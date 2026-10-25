@@ -270,14 +270,19 @@ class Main(star.Star):
                 task.cancel()
 
     # ---------------- HTTP ----------------
-    def _fast_provider(self):
-        """刷 B 站/看图/抽梗用 flash（便宜快），聊天用默认的强模型。"""
+    async def _fast_provider(self):
+        """刷 B 站/看图/抽梗用 flash（便宜快），聊天用默认的强模型。
+
+        注意：AstrBot 4.29 的 get_provider_by_id 是 async，必须 await，
+        否则拿到的是 coroutine，后面 .text_chat 会报
+        "'coroutine' object has no attribute 'text_chat'"。
+        """
         try:
             pm = getattr(self.context, "provider_manager", None)
             if pm is not None:
                 for pid in ("deepseek/deepseek-flash", "deepseek-flash"):
                     try:
-                        p = pm.get_provider_by_id(pid)
+                        p = await pm.get_provider_by_id(pid)
                         if p is not None:
                             return p
                     except Exception:
@@ -481,7 +486,7 @@ class Main(star.Star):
         )
         for attempt in range(3):
             try:
-                provider = self._fast_provider() or await self.context.get_using_provider_async(umo)
+                provider = (await self._fast_provider()) or (await self.context.get_using_provider_async(umo))
                 if provider is None:
                     raise RuntimeError("无可用 provider")
                 rules = self._comment_rules()
@@ -523,7 +528,8 @@ class Main(star.Star):
                 logger.warning(f"[bili_pusher] 文案生成失败：{exc}")
         title = re.sub(r"[【】\[\]()（）《》]", "", str(video.get("title") or "")).strip()
         title = title[:16] or "这个视频"
-        return f"哇 {title} 你来看看嘛"
+        logger.warning(f"[bili_pusher] 评论生成失败，用兜底文案：{title}")
+        return self._fix_punct(f"哇，{title}，你来看看嘛")[:90]
 
     # ---------------- B 站评论 ----------------
     def _signed(self, base: str, params: dict) -> str:
@@ -841,7 +847,7 @@ class Main(star.Star):
     async def _describe_frames(self, frames: list[str], video: dict, umo: str | None) -> str:
         if not frames:
             return ""
-        provider = self._fast_provider() or await self.context.get_using_provider_async(umo)
+        provider = (await self._fast_provider()) or (await self.context.get_using_provider_async(umo))
         if provider is None:
             return ""
         urls = []
@@ -996,7 +1002,7 @@ class Main(star.Star):
             return False, "引号不配对"
         if s.endswith(cls.BAD_TAIL) or s.endswith(cls.BAD_TAIL_PUNCT):
             return False, "半句结尾"
-        if s.count("，") >= 4 or s.count(" ") >= 6:
+        if s.count("，") >= 5 or s.count(" ") >= 6:
             return False, "分句太多"
         return True, ""
 
@@ -1183,7 +1189,7 @@ class Main(star.Star):
             "一个都不值得记就只输出：无"
         )
         try:
-            provider = self._fast_provider() or await self.context.get_using_provider_async(umo)
+            provider = (await self._fast_provider()) or (await self.context.get_using_provider_async(umo))
             if provider is None:
                 return []
             resp = await provider.text_chat(
@@ -1792,7 +1798,7 @@ class Main(star.Star):
             "可以看=有信息但不看也不亏，不值当=标题党/复读/水分大）；理由 10 字内。"
         )
         try:
-            provider = self._fast_provider() or await self.context.get_using_provider_async(umo)
+            provider = (await self._fast_provider()) or (await self.context.get_using_provider_async(umo))
             if provider is None:
                 return True, "无 provider，默认发"
             resp = await provider.text_chat(
