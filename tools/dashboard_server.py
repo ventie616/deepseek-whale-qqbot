@@ -451,6 +451,142 @@ def token_stats(days: int = 14) -> dict:
     return {"ok": True, **agg}
 
 
+BILI_WATCHED = ROOT / "bili_watched.jsonl"
+BILI_MEMORY = ROOT / "bili_memory.json"
+BILI_RECENT = ROOT / "bili_recent.json"
+GLOSSARY = ROOT / "anime_kb" / "glossary.json"
+
+
+def bili_history(days: int = 7) -> dict:
+    """近 N 天的 B站 浏览记录，按天分组、新的在前。"""
+    from datetime import date, timedelta
+
+    keep = {(date.today() - timedelta(days=i)).isoformat() for i in range(days)}
+    groups: dict[str, list] = {}
+    if BILI_WATCHED.exists():
+        for line in BILI_WATCHED.read_text(encoding="utf-8", errors="replace").splitlines():
+            if not line.strip():
+                continue
+            try:
+                r = json.loads(line)
+            except Exception:
+                continue
+            day = str(r.get("t"))[:10]
+            if day not in keep:
+                continue
+            groups.setdefault(day, []).append({
+                "t": str(r.get("t"))[11:16],
+                "title": str(r.get("title") or "")[:60],
+                "bvid": r.get("bvid") or "",
+                "verdict": r.get("verdict") or "",
+                "reason": str(r.get("reason") or "")[:50],
+                "comment": str(r.get("comment") or "")[:80],
+            })
+    out = []
+    for day in sorted(groups, reverse=True):
+        items = groups[day]
+        out.append({
+            "day": day,
+            "count": len(items),
+            "commented": sum(1 for x in items if x["verdict"] == "已评论"),
+            "items": items[-40:],
+        })
+    return {"ok": True, "days": out}
+
+
+STOPWORDS = set("""
+视频 一个 我们 他们 你们 这个 那个 什么 怎么 为什么 自己 时候 现在 可以 就是
+不是 还是 真的 有点 感觉 觉得 但是 因为 所以 如果 然后 已经 没有 这样 那样
+一直 一下 一些 这些 那些 进行 起来 出来 过来 上去 下来 一起 大家 东西 事情
+今天 昨天 明天 最近 主播 直播 情况 内容 部分 方面 问题 地方 世界 时间 视频里
+大型 纪录片 直接 五个 四个 三个 两个 第一 第二 第三 还能 竟然 只是 只能 真的
+开始 结束 看到 看见 知道 需要 应该 可能 一定 全部 所有 以及 而且 不过 虽然
+""".split())
+
+NOUN_FLAGS = ("n", "vn", "an", "nz", "nr", "ns", "nt")
+
+
+def interest_words(days: int = 14, top: int = 46) -> dict:
+    """从最近看过的视频标题 + 弹幕梗里算兴趣词。"""
+    import re as _re
+    from datetime import date, timedelta
+
+    keep = {(date.today() - timedelta(days=i)).isoformat() for i in range(days)}
+    titles: list[str] = []
+
+    if BILI_WATCHED.exists():
+        for line in BILI_WATCHED.read_text(encoding="utf-8", errors="replace").splitlines():
+            if not line.strip():
+                continue
+            try:
+                r = json.loads(line)
+            except Exception:
+                continue
+            if str(r.get("t"))[:10] not in keep:
+                continue
+            title = str(r.get("title") or "")
+            if not title:
+                continue
+            weight = 2 if r.get("verdict") in ("值得", "已评论") else 1
+            titles.extend([title] * weight)
+
+    for path in (BILI_MEMORY, BILI_RECENT):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        for m in data if isinstance(data, list) else []:
+            title = str(m.get("title") or "")
+            if title:
+                titles.append(title)
+
+    text = " ".join(titles)
+    counts: dict[str, float] = {}
+
+    try:
+        import jieba.posseg as pseg
+
+        for w, flag in pseg.cut(text):
+            w = w.strip()
+            if len(w) < 2 or w in STOPWORDS:
+                continue
+            if not flag.startswith(NOUN_FLAGS):
+                continue
+            if not _re.search(r"[\u4e00-\u9fff]", w):
+                continue
+            if _re.fullmatch(r"[\d一二三四五六七八九十百千]+", w):
+                continue
+            counts[w] = counts.get(w, 0) + 1
+    except Exception:
+        for run in _re.findall(r"[\u4e00-\u9fff]{2,}", text):
+            for n in (2, 3):
+                for i in range(len(run) - n + 1):
+                    w = run[i:i + n]
+                    if w not in STOPWORDS:
+                        counts[w] = counts.get(w, 0) + 0.5
+
+    # 弹幕梗库：出现在标题里就加权（这是她真学的词）
+    try:
+        gl = json.loads(GLOSSARY.read_text(encoding="utf-8"))
+        for item in gl if isinstance(gl, list) else []:
+            term = str((item or {}).get("term") or "").strip()
+            if term and term in text and any(_re.search(r"[\u4e00-\u9fff]", term) for _ in [0]):
+                counts[term] = counts.get(term, 0) + 3
+    except Exception:
+        pass
+
+    words = sorted(counts.items(), key=lambda kv: -kv[1])[:top]
+    if not words:
+        return {"ok": True, "words": []}
+    hi = words[0][1]
+    return {
+        "ok": True,
+        "days": days,
+        "words": [{"w": w, "n": round(n, 1), "size": round(12 + 26 * (n / hi), 1)}
+                  for w, n in words],
+    }
+
+
 DIARY_DIR = ROOT / "diary"
 DIARY_TRIGGER = ROOT / "diary_trigger.json"
 DIARY_RESULT = ROOT / "diary_trigger_result.json"
@@ -530,6 +666,16 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/status":
             self._json(status())
+            return
+        if path == "/api/bili/history":
+            q = parse_qs(u.query)
+            days = int((q.get("days") or ["7"])[0])
+            self._json(bili_history(max(1, min(days, 30))))
+            return
+        if path == "/api/wordcloud":
+            q = parse_qs(u.query)
+            days = int((q.get("days") or ["14"])[0])
+            self._json(interest_words(max(1, min(days, 60))))
             return
         if path == "/api/diary":
             q = parse_qs(u.query)
