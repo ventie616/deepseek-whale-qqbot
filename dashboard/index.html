@@ -84,6 +84,8 @@
   .bhitem .vd.skip { color:var(--dim); }
   .bhitem .tt { flex:1; }
   .bhitem .rs { color:var(--muted); font-size:12px; }
+  .inttitle { font-size:12px; color:var(--muted); margin:10px 0 4px; }
+  .inttitle:first-child { margin-top:0; }
   .intlist { display:flex; flex-direction:column; gap:6px; }
   .intitem { display:flex; align-items:center; gap:8px; font-size:13px; }
   .intitem .nm { min-width:70px; }
@@ -390,6 +392,20 @@ async function loadTokens() {
   tokCard("tok-bili", bili.today || {}, bili.daily_list || []);
 }
 
+function intSection(title, items, nameKey) {
+  if (!items || !items.length) return "";
+  const max = Math.max(1, ...items.map(x => x.weight || 0));
+  const rows = items.slice(0, 6).map(x => {
+    const pct = Math.round((x.weight || 0) / max * 100);
+    const name = x[nameKey] || "";
+    const tip = (x.examples && x.examples[0]) ? ` title="${x.examples[0]}"` : "";
+    return `<div class="intitem"${tip}><span class="nm">${name}</span>` +
+      `<span class="bar"><i style="width:${pct}%"></i></span>` +
+      `<span class="w">${x.weight}</span></div>`;
+  }).join("");
+  return `<div class="inttitle">${title}</div>${rows}`;
+}
+
 async function loadInterest(force) {
   const d = await api("/api/interest" + (force ? "?rebuild=1" : ""));
   if (!d.ok) { $("interest-list").textContent = "算不出来"; return; }
@@ -399,27 +415,23 @@ async function loadInterest(force) {
       `<div class="intitem"><span class="ex">多刷几天 B站 就会自动开始筛</span></div>`;
     return;
   }
-  const list = d.topics || [];
-  const max = Math.max(1, ...list.map(x => x.weight));
-  $("interest-list").innerHTML = list.map(x => {
-    const pct = Math.round(x.weight / max * 100);
-    const ex = (x.examples && x.examples[0]) ? `<div class="ex">${x.examples[0]}</div>` : "";
-    return `<div class="intitem"><span class="nm">${x.topic}</span>` +
-      `<span class="bar"><i style="width:${pct}%"></i></span>` +
-      `<span class="w">${x.weight}</span></div>` + ex;
-  }).join("");
+  let html = "";
+  html += intSection("按分区", d.categories || [], "name");
+  html += intSection("按话题", d.topics || [], "topic");
+  html += intSection("按博主", d.ups || [], "name");
+
   let extra = `<div class="intitem"><span class="ex">样本 ${d.samples} 条 · ${d.updated} 更新</span></div>`;
   const dr = d.drift || {};
   if (dr.enough && dr.changed) {
-    const up = (dr.risers || []).map(x => `${x.topic}(${x.from}→${x.to})`).join("　");
-    const dn = (dr.fallers || []).map(x => `${x.topic}(${x.from}→${x.to})`).join("　");
+    const up = (dr.risers || []).map(x => `${x.topic}[${x.dim}]`).join("　");
+    const dn = (dr.fallers || []).map(x => `${x.topic}[${x.dim}]`).join("　");
     extra += `<div class="intitem"><span class="ex">本周 vs ${dr.prev_week}</span></div>`;
-    if (up) extra += `<div class="intitem"><span class="nm" style="color:#22a06b">↑ 更常看</span><span class="ex">${up}</span></div>`;
-    if (dn) extra += `<div class="intitem"><span class="nm" style="color:#d64545">↓ 看得少</span><span class="ex">${dn}</span></div>`;
+    if (up) extra += `<div class="intitem"><span class="nm" style="color:#22a06b">↑</span><span class="ex">${up}</span></div>`;
+    if (dn) extra += `<div class="intitem"><span class="nm" style="color:#d64545">↓</span><span class="ex">${dn}</span></div>`;
   } else if (dr.reason) {
     extra += `<div class="intitem"><span class="ex">${dr.reason}</span></div>`;
   }
-  $("interest-list").insertAdjacentHTML("beforeend", extra);
+  $("interest-list").innerHTML = html + extra;
 }
 
 async function loadBiliHistory() {

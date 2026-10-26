@@ -37,9 +37,11 @@ try:
 except Exception:
     _tn_fix = None
 try:
+    from interest import category_hint as _interest_cat  # noqa: E402
     from interest import topic_hint as _interest_hint  # noqa: E402
 except Exception:
     _interest_hint = lambda top=6: ""
+    _interest_cat = lambda top=3: ""
 
 from astrbot.api import logger, star
 from astrbot.api.event import AstrMessageEvent, filter
@@ -1923,6 +1925,11 @@ class Main(star.Star):
             f"UP主：{video['up']}\n"
             f"时长：{(video.get('duration') or 0) // 60} 分钟\n"
             f"内容：\n{(video.get('content') or '（无）')[:1200]}\n\n"
+            + (
+                f"【她最近爱看的分区】{_interest_cat(3)}\n"
+                if _interest_cat(3)
+                else ""
+            )
             + (
                 f"【她最近感兴趣的话题】{_interest_hint(6)}\n"
                 "（沾边的优先看；完全不沾又只是标题党，可以判 NO）\n"
