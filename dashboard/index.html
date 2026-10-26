@@ -84,6 +84,13 @@
   .bhitem .vd.skip { color:var(--dim); }
   .bhitem .tt { flex:1; }
   .bhitem .rs { color:var(--muted); font-size:12px; }
+  .intlist { display:flex; flex-direction:column; gap:6px; }
+  .intitem { display:flex; align-items:center; gap:8px; font-size:13px; }
+  .intitem .nm { min-width:70px; }
+  .intitem .bar { flex:1; height:8px; background:var(--line); border-radius:4px; overflow:hidden; }
+  .intitem .bar i { display:block; height:100%; background:var(--acc); }
+  .intitem .w { color:var(--muted); font-size:12px; min-width:34px; text-align:right; }
+  .intitem .ex { color:var(--dim); font-size:11px; }
   .wc { display:flex; flex-wrap:wrap; gap:10px 16px; align-items:baseline; min-height:120px;
         padding:5px 2px; line-height:1.2; }
   .wc span { cursor:default; }
@@ -142,10 +149,20 @@
 </div>
 
 <h2>当前兴趣</h2>
-<div class="card">
-  <div class="wc" id="wc">加载中…</div>
-  <div class="toklabels" style="margin-top:10px">
-    <span>来源：近 14 天看过/评论过的视频标题 + 她学的弹幕梗</span>
+<div class="grid">
+  <div class="card">
+    <h3>词云</h3>
+    <div class="wc" id="wc">加载中…</div>
+    <div class="toklabels" style="margin-top:10px">
+      <span>来源：近 14 天看过/评论过的视频标题 + 她学的弹幕梗</span>
+    </div>
+  </div>
+  <div class="card">
+    <h3>自动筛选出的兴趣话题</h3>
+    <div id="interest-list" class="intlist">加载中…</div>
+    <div class="btns" style="margin-top:10px">
+      <button onclick="loadInterest(true)">重新算一遍</button>
+    </div>
   </div>
 </div>
 
@@ -373,6 +390,28 @@ async function loadTokens() {
   tokCard("tok-bili", bili.today || {}, bili.daily_list || []);
 }
 
+async function loadInterest(force) {
+  const d = await api("/api/interest" + (force ? "?rebuild=1" : ""));
+  if (!d.ok) { $("interest-list").textContent = "算不出来"; return; }
+  if (!d.enough) {
+    $("interest-list").innerHTML =
+      `<div class="intitem"><span>样本还不够：${d.samples}/${d.need} 条</span></div>` +
+      `<div class="intitem"><span class="ex">多刷几天 B站 就会自动开始筛</span></div>`;
+    return;
+  }
+  const list = d.topics || [];
+  const max = Math.max(1, ...list.map(x => x.weight));
+  $("interest-list").innerHTML = list.map(x => {
+    const pct = Math.round(x.weight / max * 100);
+    const ex = (x.examples && x.examples[0]) ? `<div class="ex">${x.examples[0]}</div>` : "";
+    return `<div class="intitem"><span class="nm">${x.topic}</span>` +
+      `<span class="bar"><i style="width:${pct}%"></i></span>` +
+      `<span class="w">${x.weight}</span></div>` + ex;
+  }).join("");
+  $("interest-list").insertAdjacentHTML("beforeend",
+    `<div class="intitem"><span class="ex">样本 ${d.samples} 条 · ${d.updated} 更新</span></div>`);
+}
+
 async function loadBiliHistory() {
   const d = await api("/api/bili/history?days=7");
   const days = d.days || [];
@@ -451,6 +490,7 @@ async function loadAll() {
   loadDiary().catch(() => {});
   loadBiliHistory().catch(() => {});
   loadWordCloud().catch(() => {});
+  loadInterest().catch(() => {});
   const d = await api("/api/status");
   $("now").textContent = d.now;
   setDot("d-astr", d.services.astrbot);

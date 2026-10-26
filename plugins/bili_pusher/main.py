@@ -36,6 +36,10 @@ try:
     from textnorm import fix_punct as _tn_fix  # noqa: E402
 except Exception:
     _tn_fix = None
+try:
+    from interest import topic_hint as _interest_hint  # noqa: E402
+except Exception:
+    _interest_hint = lambda top=6: ""
 
 from astrbot.api import logger, star
 from astrbot.api.event import AstrMessageEvent, filter
@@ -1919,7 +1923,13 @@ class Main(star.Star):
             f"UP主：{video['up']}\n"
             f"时长：{(video.get('duration') or 0) // 60} 分钟\n"
             f"内容：\n{(video.get('content') or '（无）')[:1200]}\n\n"
-            "判断标准只有一句：值不值得占用主人一次注意力。\n"
+            + (
+                f"【她最近感兴趣的话题】{_interest_hint(6)}\n"
+                "（沾边的优先看；完全不沾又只是标题党，可以判 NO）\n"
+                if _interest_hint(6)
+                else ""
+            )
+            + "判断标准只有一句：值不值得占用主人一次注意力。\n"
             "值得＝下面任一即可：\n"
             "  1) 有实在信息量（干货、观点、数据、教程）；\n"
             "  2) 有情绪价值——好笑、解压、有共鸣、看着爽、被治愈、想吐槽也行；\n"

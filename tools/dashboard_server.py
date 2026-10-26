@@ -587,6 +587,27 @@ def interest_words(days: int = 14, top: int = 46) -> dict:
     }
 
 
+def interest_profile(force: bool = False) -> dict:
+    """兴趣画像：从 bili_watched 算，6 小时内复用。"""
+    import sys
+
+    sys.path.insert(0, str(ROOT / "tools"))
+    from interest import build_profile
+
+    profile_path = ROOT / "interest_profile.json"
+    if not force and profile_path.is_file():
+        try:
+            old = json.loads(profile_path.read_text(encoding="utf-8"))
+            from datetime import datetime as _dt
+
+            age = (_dt.now() - _dt.strptime(old.get("updated", ""), "%Y-%m-%d %H:%M")).total_seconds()
+            if 0 <= age < 6 * 3600:
+                return old
+        except Exception:
+            pass
+    return build_profile(days=14, min_samples=40)
+
+
 DIARY_DIR = ROOT / "diary"
 DIARY_TRIGGER = ROOT / "diary_trigger.json"
 DIARY_RESULT = ROOT / "diary_trigger_result.json"
@@ -666,6 +687,11 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/status":
             self._json(status())
+            return
+        if path == "/api/interest":
+            q = parse_qs(u.query)
+            force = (q.get("rebuild") or ["0"])[0] == "1"
+            self._json(interest_profile(force))
             return
         if path == "/api/bili/history":
             q = parse_qs(u.query)
