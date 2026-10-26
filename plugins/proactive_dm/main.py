@@ -208,7 +208,19 @@ class Main(star.Star):
 
     # ---------------- 生成 ----------------
     async def _compose(self, kind: str = "normal") -> str:
-        provider = await self.context.get_using_provider_async(None)
+        # 主动私聊都是短句，用 flash 就够，省一半以上
+        provider = None
+        try:
+            pm = getattr(self.context, "provider_manager", None)
+            if pm is not None:
+                for pid in ("deepseek/deepseek-flash", "deepseek-flash"):
+                    provider = await pm.get_provider_by_id(pid)
+                    if provider is not None:
+                        break
+        except Exception:
+            provider = None
+        if provider is None:
+            provider = await self.context.get_using_provider_async(None)
         if provider is None:
             return ""
         recent = self.state.get("recent_msgs") or []

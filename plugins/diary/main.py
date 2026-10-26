@@ -22,6 +22,19 @@ except Exception:
     _tn_fix = None
 
 from astrbot.api import logger, star
+
+
+try:  # 易变注入挂到用户消息后，让 system_prompt 保持稳定（缓存友好）
+    from astrbot.core.agent.message import TextPart as _TextPart
+except Exception:  # pragma: no cover
+    _TextPart = None
+
+
+def _extra(req, text: str) -> None:
+    if _TextPart is not None and hasattr(req, "extra_user_content_parts"):
+        req.extra_user_content_parts.append(_TextPart(text=text))
+    else:
+        req.system_prompt += text
 from astrbot.api.event import AstrMessageEvent, filter
 
 ROOT = Path(r"C:\QQBot")
@@ -313,11 +326,11 @@ class Main(star.Star):
             chunks.append(f"【你今天写的日记】\n{t_text[:300]}")
         if not chunks:
             return
-        req.system_prompt += (
+        _extra(req, (
             "\n\n" + "\n\n".join(chunks)
             + "\n（这是你自己写的日记，是你真实经历过的事。聊到相关的可以自然提起，"
             "别原样背，也别说是系统给的。）"
-        )
+        ))
 
     # ---------------- 指令 ----------------
     @filter.command("日记")

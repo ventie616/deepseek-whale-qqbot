@@ -46,6 +46,19 @@ except Exception:
 from astrbot.api import logger, star
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.message_components import At, Plain
+
+
+try:  # 易变注入挂到用户消息后，让 system_prompt 保持稳定（缓存友好）
+    from astrbot.core.agent.message import TextPart as _TextPart
+except Exception:  # pragma: no cover
+    _TextPart = None
+
+
+def _extra(req, text: str) -> None:
+    if _TextPart is not None and hasattr(req, "extra_user_content_parts"):
+        req.extra_user_content_parts.append(_TextPart(text=text))
+    else:
+        req.system_prompt += text
 from astrbot.core.message.message_event_result import MessageChain
 
 CONFIG_PATH = Path(r"C:\QQBot\bili_push.json")
@@ -1775,12 +1788,12 @@ class Main(star.Star):
             self._link_cache[bvid] = (now, body)
             logger.info(f"[bili_pusher] 读取分享链接 {bvid}：{len(body)} 字")
 
-        req.system_prompt += (
+        _extra(req, (
             "\n\n【主人刚在 QQ 里发来一条 B站 视频】\n"
             + body
             + "\n（这是你刚读到的内容，用你自己的话回应：可以吐槽、可以挑最想说的那一点。"
             "不要罗列字段，不要说我读了字幕。）"
-        )
+        ))
         logger.info(f"[bili_pusher] 已把 {bvid} 的内容注入对话")
 
     @filter.on_llm_request()
@@ -1851,20 +1864,20 @@ class Main(star.Star):
             elif kind == "push":
                 act_lines.append(f"- {hm} 你私聊推给主人一条：{body[:50]}")
         if act_lines:
-            req.system_prompt += (
+            _extra(req, (
                 "\n\n【你最近跟主人在B站这边的往来】\n"
                 + "\n".join(act_lines)
                 + "\n（这些也是你们的聊天记录的一部分，别当成没发生过）"
-            )
+            ))
 
-        req.system_prompt += (
+        _extra(req, (
             f"\n\n【你最近自己刷B站看到的（{len(finals)+len(recents)} 条）】\n"
             "（标了「已评论」的是你真去发过评论的，别再说没看过或没评论；\n"
             "没标的只是看过）\n"
             + "\n".join(lines)
             + "\n（这些是你刷B站时看过的东西：有的你评论过，有的只是看过没说话。"
             "聊到相关话题可以自然提起，别说是「系统提示」，也别把列表原样背出来。）"
-        )
+        ))
         logger.info(f"[bili_pusher] 注入 {len(items)} 条 B站记忆")
 
     def _write_skip_report(self, skipped: list[tuple[str, str, str]]) -> None:

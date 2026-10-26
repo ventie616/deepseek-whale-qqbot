@@ -20,6 +20,19 @@ from astrbot.api import logger, star
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.message_components import Plain
 
+
+try:  # 易变注入挂到用户消息后，让 system_prompt 保持稳定（缓存友好）
+    from astrbot.core.agent.message import TextPart as _TextPart
+except Exception:  # pragma: no cover
+    _TextPart = None
+
+
+def _extra(req, text: str) -> None:
+    if _TextPart is not None and hasattr(req, "extra_user_content_parts"):
+        req.extra_user_content_parts.append(_TextPart(text=text))
+    else:
+        req.system_prompt += text
+
 STATE = Path(r"C:\QQBot\group_memory.json")
 SUMMARY_EVERY = 24          # 攒够多少条压一次摘要
 BUFFER_MAX = 48
@@ -191,10 +204,10 @@ class Main(star.Star):
             lines.append(f"【主人最近说的】{recent}")
         if not lines:
             return
-        req.system_prompt += (
+        _extra(req, (
             "\n\n" + "\n".join(lines)
             + "\n（这是你和主人的私聊记忆：接得上就别说「你怎么了」，也别把记忆原样背出来。）"
-        )
+        ))
         logger.info(
             f"[group_memory] 私聊注入：摘要{bool(summary.get('text'))} 上句{bool(last)}"
         )
@@ -250,11 +263,11 @@ class Main(star.Star):
         if last:
             block += f"【你上一句说的】{last}\n"
         if block:
-            req.system_prompt += (
+            _extra(req, (
                 "\n\n" + block
                 + "（这些是你的记忆，自然地用：认得出人就叫名字，接得上就别重复问；"
                 "不确定的就别硬编。）"
-            )
+            ))
             logger.info(f"[group_memory] 注入 {len(picked)} 人物卡 + 摘要{bool(summary.get('text'))}")
 
     # ---------------- 工具 ----------------

@@ -27,6 +27,19 @@ except Exception:  # pragma: no cover
     drift_hint = lambda: ""  # noqa: E731
 
 from astrbot.api import logger, star
+
+
+try:  # 易变注入挂到用户消息后，让 system_prompt 保持稳定（缓存友好）
+    from astrbot.core.agent.message import TextPart as _TextPart
+except Exception:  # pragma: no cover
+    _TextPart = None
+
+
+def _extra(req, text: str) -> None:
+    if _TextPart is not None and hasattr(req, "extra_user_content_parts"):
+        req.extra_user_content_parts.append(_TextPart(text=text))
+    else:
+        req.system_prompt += text
 from astrbot.api.event import AstrMessageEvent, filter
 
 REBUILD_EVERY = 4 * 3600
@@ -107,12 +120,12 @@ class Main(star.Star):
         if not hint:
             return
         change = drift_hint()
-        req.system_prompt += (
+        _extra(req, (
             f"\n\n【你最近最感兴趣的话题】{hint}\n"
             + (f"（跟上周比，{change}）\n" if change else "")
             + "（这是从你自己刷过、评论过的视频里总结的，聊到相关的东西可以自然提起，"
             "别当成清单念出来。）"
-        )
+        ))
 
     # ---------------- 指令 ----------------
     @filter.command("兴趣")
