@@ -1,0 +1,4 @@
+name: image_slim
+desc: 把会话历史里的 base64 图片换成占位文字，避免每轮重复付费
+author: local
+version: 1.0.0

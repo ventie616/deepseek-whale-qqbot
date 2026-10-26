@@ -24,10 +24,9 @@ except Exception:  # pragma: no cover
 
 
 def _extra(req, text: str) -> None:
-    if _TextPart is not None and hasattr(req, "extra_user_content_parts"):
-        req.extra_user_content_parts.append(_TextPart(text=text))
-    else:
-        req.system_prompt += text
+    """注意：extra_user_content_parts 会被写进会话历史，越攒越贵，
+    所以这里仍然写 system_prompt（只在当次生效，不进历史）。"""
+    req.system_prompt += text
 from astrbot.api.event import AstrMessageEvent, filter
 
 STATE = Path(r"C:\QQBot\mood.json")

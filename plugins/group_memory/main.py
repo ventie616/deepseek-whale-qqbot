@@ -28,11 +28,9 @@ except Exception:  # pragma: no cover
 
 
 def _extra(req, text: str) -> None:
-    if _TextPart is not None and hasattr(req, "extra_user_content_parts"):
-        req.extra_user_content_parts.append(_TextPart(text=text))
-    else:
-        req.system_prompt += text
-
+    """注意：extra_user_content_parts 会被写进会话历史，越攒越贵，
+    所以这里仍然写 system_prompt（只在当次生效，不进历史）。"""
+    req.system_prompt += text
 STATE = Path(r"C:\QQBot\group_memory.json")
 SUMMARY_EVERY = 24          # 攒够多少条压一次摘要
 BUFFER_MAX = 48
