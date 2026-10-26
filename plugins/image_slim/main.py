@@ -19,6 +19,25 @@ from astrbot.api import logger, star
 DB = Path(r"C:\QQBot\astrbot\data\data_v4.db")
 PLACEHOLDER = "[之前看过的一张图，内容已不在上下文里]"
 
+# 历史里残留的注入块（额外块那次改动留下的），整段丢掉
+INJECT_MARKS = (
+    "【你最近跟主人在B站这边的往来】",
+    "【你最近自己刷B站看到的",
+    "【你昨天写的日记】",
+    "【你今天写的日记】",
+    "【你最近最感兴趣的话题】",
+    "【今天的心情】",
+    "【你们最近聊过】",
+    "【你上一句说的】",
+    "【主人最近说的】",
+    "【你最近爱看的分区】",
+)
+
+
+def _is_injection(text: str) -> bool:
+    s = text.lstrip()
+    return any(s.startswith(m) for m in INJECT_MARKS)
+
 
 def _strip(content: str) -> tuple[str, int]:
     try:
@@ -39,8 +58,12 @@ def _strip(content: str) -> tuple[str, int]:
             if isinstance(part, dict) and part.get("type") in ("image_url", "image"):
                 new.append({"type": "text", "text": PLACEHOLDER})
                 n += 1
-            else:
-                new.append(part)
+                continue
+            if isinstance(part, dict) and part.get("type") == "text":
+                if _is_injection(str(part.get("text") or "")):
+                    n += 1
+                    continue
+            new.append(part)
         m["content"] = new
     if not n:
         return content, 0
@@ -60,7 +83,7 @@ def _sweep_sync() -> int:
                 if not content:
                     continue
                 s = content if isinstance(content, str) else content.decode("utf-8", "replace")
-                if "image_url" not in s:
+                if "image_url" not in s and not any(m in s for m in INJECT_MARKS):
                     continue
                 new, n = _strip(s)
                 if n:
