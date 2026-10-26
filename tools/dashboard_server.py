@@ -602,10 +602,24 @@ def interest_profile(force: bool = False) -> dict:
 
             age = (_dt.now() - _dt.strptime(old.get("updated", ""), "%Y-%m-%d %H:%M")).total_seconds()
             if 0 <= age < 6 * 3600:
+                try:
+                    from interest import compute_drift
+
+                    old["drift"] = compute_drift()
+                except Exception:
+                    old["drift"] = {"enough": False}
                 return old
         except Exception:
             pass
-    return build_profile(days=14, min_samples=40)
+    profile = build_profile(days=14, min_samples=40)
+    try:
+        from interest import compute_drift, record_snapshot
+
+        record_snapshot(profile)
+        profile["drift"] = compute_drift()
+    except Exception:
+        profile["drift"] = {"enough": False}
+    return profile
 
 
 DIARY_DIR = ROOT / "diary"

@@ -21,6 +21,8 @@ ROOT = Path(r"C:\QQBot")
 WATCHED = ROOT / "bili_watched.jsonl"
 GLOSSARY = ROOT / "anime_kb" / "glossary.json"
 PROFILE = ROOT / "interest_profile.json"
+HISTORY = ROOT / "interest_history.json"
+DRIFT = ROOT / "interest_drift.jsonl"
 
 STOPWORDS = set("""
 视频 一个 我们 他们 你们 这个 那个 什么 怎么 为什么 自己 时候 现在 可以 就是
@@ -130,6 +132,104 @@ def build_profile(days: int = 14, min_samples: int = 40, top: int = 12) -> dict:
     return profile
 
 
+def _week_key(d: date | None = None) -> str:
+    d = d or date.today()
+    y, w, _ = d.isocalendar()
+    return f"{y}-W{w:02d}"
+
+
+def record_snapshot(profile: dict | None = None) -> dict:
+    """把当前画像记进周快照（同一周覆盖，不同周追加）。"""
+    profile = profile or _load(PROFILE, {})
+    if not profile.get("enough"):
+        return _load(HISTORY, {"weeks": []})
+
+    history = _load(HISTORY, {"weeks": []})
+    weeks = [w for w in history.get("weeks", []) if isinstance(w, dict)]
+    key = _week_key()
+    entry = {
+        "week": key,
+        "date": date.today().isoformat(),
+        "samples": profile.get("samples", 0),
+        "topics": [{"topic": x["topic"], "weight": x.get("weight", 0)}
+                   for x in profile.get("topics", [])],
+    }
+    weeks = [w for w in weeks if w.get("week") != key] + [entry]
+    weeks.sort(key=lambda w: w.get("week", ""))
+    history = {"weeks": weeks[-12:]}          # 只留最近 12 周
+    HISTORY.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
+    return history
+
+
+def compute_drift(min_rel: float = 0.35, min_abs: float = 4.0) -> dict:
+    """对比最近两周快照，找出冒头/掉队的话题。"""
+    history = _load(HISTORY, {"weeks": []})
+    weeks = [w for w in history.get("weeks", []) if isinstance(w, dict)]
+    if len(weeks) < 2:
+        return {"ok": True, "enough": False, "reason": "只有一周记录，还看不出变化"}
+
+    prev, cur = weeks[-2], weeks[-1]
+    pw = {t["topic"]: float(t.get("weight", 0)) for t in prev.get("topics", [])}
+    cw = {t["topic"]: float(t.get("weight", 0)) for t in cur.get("topics", [])}
+
+    risers, fallers = [], []
+    for topic, w in cw.items():
+        base = pw.get(topic, 0.0)
+        if base <= 0:
+            risers.append({"topic": topic, "from": 0, "to": w, "kind": "新出现"})
+        elif w >= base * (1 + min_rel) and (w - base) >= min_abs:
+            risers.append({"topic": topic, "from": base, "to": w, "kind": "升温"})
+    for topic, w in pw.items():
+        now = cw.get(topic, 0.0)
+        if now <= 0:
+            fallers.append({"topic": topic, "from": w, "to": 0, "kind": "消失"})
+        elif w >= now * (1 + min_rel) and (w - now) >= min_abs:
+            fallers.append({"topic": topic, "from": w, "to": now, "kind": "降温"})
+
+    risers.sort(key=lambda x: -(x["to"] - x["from"]))
+    fallers.sort(key=lambda x: (x["to"] - x["from"]))
+    drift = {
+        "ok": True,
+        "enough": True,
+        "prev_week": prev.get("week"),
+        "cur_week": cur.get("week"),
+        "prev_samples": prev.get("samples", 0),
+        "cur_samples": cur.get("samples", 0),
+        "risers": risers[:6],
+        "fallers": fallers[:6],
+        "changed": bool(risers or fallers),
+    }
+
+    if drift["changed"]:
+        try:
+            with DRIFT.open("a", encoding="utf-8") as f:
+                f.write(json.dumps({
+                    "t": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "prev": drift["prev_week"],
+                    "cur": drift["cur_week"],
+                    "risers": risers[:4],
+                    "fallers": fallers[:4],
+                }, ensure_ascii=False) + "\n")
+        except OSError:
+            pass
+    return drift
+
+
+def drift_hint() -> str:
+    """给聊天用的一句话：最近关注变了什么。"""
+    d = compute_drift()
+    if not d.get("enough") or not d.get("changed"):
+        return ""
+    up = "、".join(x["topic"] for x in d["risers"][:3])
+    down = "、".join(x["topic"] for x in d["fallers"][:3])
+    bits = []
+    if up:
+        bits.append(f"最近更常看 {up}")
+    if down:
+        bits.append(f"看得少了 {down}")
+    return "；".join(bits)
+
+
 def topic_hint(top: int = 6) -> str:
     """给判据/系统提示用的一句话：她最近感兴趣的话题。"""
     profile = _load(PROFILE, {})
@@ -140,5 +240,8 @@ def topic_hint(top: int = 6) -> str:
 
 
 if __name__ == "__main__":
-    p = build_profile()
-    print(json.dumps(p, ensure_ascii=False, indent=2)[:1200])
+    profile = build_profile()
+    record_snapshot(profile)
+    drift = compute_drift()
+    print(json.dumps({"profile": {k: profile.get(k) for k in ("enough", "samples", "updated")},
+                      "drift": drift}, ensure_ascii=False, indent=2)[:1600])

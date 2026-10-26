@@ -408,8 +408,18 @@ async function loadInterest(force) {
       `<span class="bar"><i style="width:${pct}%"></i></span>` +
       `<span class="w">${x.weight}</span></div>` + ex;
   }).join("");
-  $("interest-list").insertAdjacentHTML("beforeend",
-    `<div class="intitem"><span class="ex">样本 ${d.samples} 条 · ${d.updated} 更新</span></div>`);
+  let extra = `<div class="intitem"><span class="ex">样本 ${d.samples} 条 · ${d.updated} 更新</span></div>`;
+  const dr = d.drift || {};
+  if (dr.enough && dr.changed) {
+    const up = (dr.risers || []).map(x => `${x.topic}(${x.from}→${x.to})`).join("　");
+    const dn = (dr.fallers || []).map(x => `${x.topic}(${x.from}→${x.to})`).join("　");
+    extra += `<div class="intitem"><span class="ex">本周 vs ${dr.prev_week}</span></div>`;
+    if (up) extra += `<div class="intitem"><span class="nm" style="color:#22a06b">↑ 更常看</span><span class="ex">${up}</span></div>`;
+    if (dn) extra += `<div class="intitem"><span class="nm" style="color:#d64545">↓ 看得少</span><span class="ex">${dn}</span></div>`;
+  } else if (dr.reason) {
+    extra += `<div class="intitem"><span class="ex">${dr.reason}</span></div>`;
+  }
+  $("interest-list").insertAdjacentHTML("beforeend", extra);
 }
 
 async function loadBiliHistory() {

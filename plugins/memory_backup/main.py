@@ -35,6 +35,8 @@ TARGETS = [
     ("voice_clips/index.json", "唱歌素材索引"),
     ("stickers/index.json", "表情索引"),
     ("proactive_dm_state.json", "主动私聊状态"),
+    ("interest_profile.json", "兴趣画像"),
+    ("interest_history.json", "兴趣周快照"),
 ]
 
 

@@ -10,11 +10,21 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(r"C:\QQBot\tools")))
 try:
-    from interest import PROFILE, build_profile, topic_hint  # noqa: E402
+    from interest import (  # noqa: E402
+    PROFILE,
+    build_profile,
+    compute_drift,
+    drift_hint,
+    record_snapshot,
+    topic_hint,
+)
 except Exception:  # pragma: no cover
     PROFILE = Path(r"C:\QQBot\interest_profile.json")
     build_profile = None
+    record_snapshot = None
+    compute_drift = None
     topic_hint = lambda top=6: ""  # noqa: E731
+    drift_hint = lambda: ""  # noqa: E731
 
 from astrbot.api import logger, star
 from astrbot.api.event import AstrMessageEvent, filter
@@ -54,6 +64,16 @@ class Main(star.Star):
                 pass
         profile = build_profile(days=14, min_samples=MIN_SAMPLES)
         self._profile = profile
+        if profile.get("enough") and record_snapshot is not None:
+            try:
+                record_snapshot(profile)      # 记周快照
+                drift = compute_drift() if compute_drift else {}
+                if drift.get("changed"):
+                    up = "、".join(x["topic"] for x in drift["risers"][:3])
+                    down = "、".join(x["topic"] for x in drift["fallers"][:3])
+                    logger.info(f"[interest] 本周变化：更常看 {up or '—'}；少了 {down or '—'}")
+            except Exception as exc:  # noqa: BLE001
+                logger.info(f"[interest] 漂移计算失败：{exc}")
         if profile.get("enough"):
             names = "、".join(t["topic"] for t in profile["topics"][:6])
             logger.info(f"[interest] 画像更新：{profile['samples']} 条样本 → {names}")
@@ -86,9 +106,11 @@ class Main(star.Star):
         hint = topic_hint(6)
         if not hint:
             return
+        change = drift_hint()
         req.system_prompt += (
             f"\n\n【你最近最感兴趣的话题】{hint}\n"
-            "（这是从你自己刷过、评论过的视频里总结的，聊到相关的东西可以自然提起，"
+            + (f"（跟上周比，{change}）\n" if change else "")
+            + "（这是从你自己刷过、评论过的视频里总结的，聊到相关的东西可以自然提起，"
             "别当成清单念出来。）"
         )
 
@@ -109,6 +131,28 @@ class Main(star.Star):
         lines = [f"最近 {p['days']} 天看了 {p['samples']} 条，最感兴趣的是："]
         for i, t in enumerate(p["topics"][:8], 1):
             lines.append(f"{i}. {t['topic']}（权重 {t['weight']}）")
+        yield event.plain_result("\n".join(lines))
+
+    @filter.command("兴趣变化")
+    async def drift_cmd(self, event: AstrMessageEvent):
+        """看这周的兴趣跟上周比有什么变化"""
+        d = await asyncio.to_thread(compute_drift) if compute_drift else {}
+        if not d:
+            yield event.plain_result("还算不出来")
+            return
+        if not d.get("enough"):
+            yield event.plain_result(d.get("reason") or "记录还太少")
+            return
+        if not d.get("changed"):
+            yield event.plain_result(
+                f"{d.get('cur_week')} 跟 {d.get('prev_week')} 比，没什么变化"
+            )
+            return
+        lines = [f"{d['cur_week']} vs {d['prev_week']}"]
+        for x in d.get("risers", [])[:5]:
+            lines.append(f"↑ {x['topic']}（{x['from']} → {x['to']}，{x['kind']}）")
+        for x in d.get("fallers", [])[:5]:
+            lines.append(f"↓ {x['topic']}（{x['from']} → {x['to']}，{x['kind']}）")
         yield event.plain_result("\n".join(lines))
 
     # ---------------- 工具 ----------------
