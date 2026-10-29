@@ -1,0 +1,8 @@
+name: astrbot_plugin_feiyu_voice
+display_name: 肥鱼声音
+desc: 通过统一声音服务调用肥鱼TTS、RVC和MIDI/ABC按谱唱歌。
+version: v0.1.0
+author: kaiyuey03
+astrbot_version: ">=4.29.1,<5"
+
+repo: https://github.com/kaiyuey03/astrbot_plugin_feiyu_voice

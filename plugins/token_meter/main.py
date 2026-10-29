@@ -4,7 +4,7 @@
 调用完从 resp.raw_completion.usage 里取 prompt/completion/cached。
 插件直接调 provider（B站那套）也能抓到，因为它们用的还是同一个实例。
 
-数据写 C:\\QQBot\\token_usage.jsonl（一行一次调用），超过 5 MB 自动轮转。
+数据写 D:\\QQrobot\\token_usage.jsonl（一行一次调用），超过 5 MB 自动轮转。
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from pathlib import Path
 from astrbot.api import logger, star
 from astrbot.api.event import AstrMessageEvent, filter
 
-ROOT = Path(r"C:\QQBot")
+ROOT = Path(r"D:\QQrobot")
 USAGE = ROOT / "token_usage.jsonl"
 MAX_MB = 5
 
@@ -99,9 +99,15 @@ class Main(star.Star):
                 if u:
                     model = ""
                     try:
-                        model = provider.get_model()
+                        # 优先用本次请求实际指定的模型（cost_router 会改 kwargs/model）
+                        model = str(kwargs.get("model") or "") or ""
                     except Exception:
-                        model = getattr(provider, "model_name", "") or ""
+                        model = ""
+                    if not model:
+                        try:
+                            model = provider.get_model()
+                        except Exception:
+                            model = getattr(provider, "model_name", "") or ""
                     plugin._append({
                         "t": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                         "model": model,
@@ -111,6 +117,44 @@ class Main(star.Star):
             except Exception:
                 pass
             return resp
+
+        # 包流式接口：webchat 走 text_chat_stream，否则控制台看不到这部分用量
+        original_stream = getattr(provider, "text_chat_stream", None)
+        if original_stream is not None and inspect.isasyncgenfunction(original_stream):
+            @functools.wraps(original_stream)
+            async def patched_stream(*args, **kwargs):
+                caller = None
+                try:
+                    caller = _module_of_frame(inspect.stack()[1].frame)
+                except Exception:
+                    caller = "其他"
+                agen = original_stream(*args, **kwargs)
+                last = None
+                async for chunk in agen:
+                    last = chunk
+                    yield chunk
+                try:
+                    u = _usage_of(last) if last is not None else None
+                    if u:
+                        model = str(kwargs.get("model") or "") or ""
+                        if not model:
+                            try:
+                                model = provider.get_model()
+                            except Exception:
+                                model = getattr(provider, "model_name", "") or ""
+                        plugin._append({
+                            "t": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                            "model": model,
+                            "source": caller,
+                            **u,
+                        })
+                except Exception:
+                    pass
+
+            try:
+                provider.text_chat_stream = patched_stream
+            except Exception:
+                pass
 
         try:
             provider.text_chat = patched

@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>知识图谱 · 鲸鱼娘</title>
+<style>
+  :root {
+    --bg:#0c121a; --panel:#131c28; --line:#22303f; --text:#e6eefb; --dim:#8ba3c0;
+    --g-系统:#5aa9ff; --g-对话:#6ee7b7; --g-B站:#fb7185; --g-声音:#c084fc;
+    --g-记忆:#fbbf24; --g-外部:#94a3b8; --g-persona:#f472b6;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--text);
+               font:14px/1.55 "Segoe UI","Microsoft YaHei",sans-serif; overflow:hidden; }
+  #wrap { display:flex; height:100%; }
+  #stage { flex:1; position:relative; }
+  canvas { display:block; width:100%; height:100%; cursor:grab; }
+  canvas.drag { cursor:grabbing; }
+
+  .hud { position:absolute; left:18px; top:16px; pointer-events:none; }
+  .hud h1 { font-size:17px; margin:0 0 4px; font-weight:700; }
+  .hud { top:18px; }
+  .hud .sub { color:var(--dim); font-size:12.5px; }
+
+  .tools { position:absolute; left:18px; top:86px; display:flex; gap:8px; flex-wrap:wrap; max-width:calc(100% - 36px); }
+  .tools input { background:var(--panel); border:1px solid var(--line); color:var(--text);
+                 border-radius:10px; padding:8px 12px; width:210px; outline:none; }
+  .tools input:focus { border-color:var(--g-系统); }
+  .chipbar { display:flex; gap:6px; flex-wrap:wrap; }
+  .chip { background:var(--panel); border:1px solid var(--line); color:var(--dim);
+          border-radius:999px; padding:6px 12px; font-size:12.5px; cursor:pointer; user-select:none; }
+  .chip.on { color:#06121f; font-weight:700; border-color:transparent; }
+
+  #side { width:300px; flex:0 0 300px; background:var(--panel); border-left:1px solid var(--line);
+          padding:20px 18px; overflow-y:auto; }
+  #side h2 { font-size:14px; margin:0 0 10px; color:var(--dim); font-weight:600; letter-spacing:.04em; }
+  #detail .name { font-size:17px; font-weight:700; margin-bottom:4px; }
+  #detail .tag { display:inline-block; font-size:11.5px; padding:2px 9px; border-radius:999px;
+                 margin:0 6px 8px 0; background:#0d1622; border:1px solid var(--line); color:var(--dim); }
+  #detail .desc { color:#c7d6e8; font-size:13px; margin-bottom:14px; }
+  #detail .rel { font-size:12.5px; color:var(--dim); line-height:1.7; }
+  #detail .rel b { color:#bcd2ea; font-weight:600; }
+  #legend { margin-top:22px; }
+  .lg { display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--dim); margin-bottom:7px; cursor:pointer; }
+  .lg i { width:10px; height:10px; border-radius:50%; display:inline-block; }
+  .lg.off { opacity:.35; }
+  .hint { color:#5d7591; font-size:12px; margin-top:18px; line-height:1.7; }
+  .stats { margin-top:16px; font-size:12.5px; color:var(--dim); }
+  .stats b { color:var(--text); }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="stage">
+    <canvas id="c"></canvas>
+    <div class="hud">
+      <h1>知识图谱</h1>
+      <div class="sub" id="sub">加载中…</div>
+    </div>
+    <div class="tools">
+      <input id="q" placeholder="搜索节点（插件/服务/文件）…">
+      <div class="chip" id="rebuildBtn" style="cursor:pointer">↻ 重建</div>
+      <div class="chipbar" id="chips"></div>
+    </div>
+  </div>
+  <aside id="side">
+    <h2>选中节点</h2>
+    <div id="detail"><div class="desc" style="color:#5d7591">点一个节点看详情，或者悬停看它连着什么。</div></div>
+    <div id="legend"><h2>分组</h2><div id="lgs"></div></div>
+    <div class="stats" id="stats"></div>
+    <div class="hint">拖节点可以拉开、滚轮缩放、拖空白处平移。点空白处取消选中。</div>
+  </aside>
+</div>
+<script>
+const COLORS = {
+  "系统": "#5aa9ff", "对话": "#6ee7b7", "B站": "#fb7185", "声音": "#c084fc",
+  "记忆": "#fbbf24", "外部": "#94a3b8", "persona": "#f472b6"
+};
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W = 0, H = 0, DPR = Math.min(devicePixelRatio || 1, 2);
+let nodes = [], edges = [], byId = new Map();
+let view = { x: 0, y: 0, k: 1 };
+let hover = null, selected = null;
+let hidden = new Set();
+const TOKEN = new URLSearchParams(location.search).get('token') || '';
+const pointer = { down: false, moved: false, mode: null, node: null, sx: 0, sy: 0 };
+
+function resize() {
+  const r = canvas.getBoundingClientRect();
+  W = r.width; H = r.height;
+  canvas.width = W * DPR; canvas.height = H * DPR;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', () => { resize(); fitView(); draw(); });
+
+function toWorld(x, y) { return { x: (x - view.x) / view.k, y: (y - view.y) / view.k }; }
+
+async function boot() {
+  const data = await (await fetch('/api/knowledge')).json();
+  document.getElementById('sub').textContent =
+    `${data.nodes.length} 个节点 · ${data.edges.length} 条关系 · 生成于 ${data.generated}`;
+  nodes = data.nodes.map((n, i) => ({
+    ...n,
+    x: Math.cos(i * 2.399) * (120 + (i % 7) * 26),
+    y: Math.sin(i * 2.399) * (120 + (i % 7) * 26),
+    vx: 0, vy: 0,
+  }));
+  byId = new Map(nodes.map(n => [n.id, n]));
+  edges = data.edges.map(e => ({ ...e, a: byId.get(e.source), b: byId.get(e.target) }))
+                    .filter(e => e.a && e.b);
+  buildChips(Object.keys(COLORS).filter(g => nodes.some(n => n.group === g)));
+  buildLegend();
+  document.getElementById('stats').innerHTML =
+    `节点 <b>${nodes.length}</b> · 关系 <b>${edges.length}</b>`;
+  simulate();
+  fitView();
+  draw();
+}
+
+function buildChips(groups) {
+  const bar = document.getElementById('chips');
+  groups.forEach(g => {
+    const b = document.createElement('div');
+    b.className = 'chip on';
+    b.textContent = g;
+    b.style.background = COLORS[g] + '22';
+    b.style.color = COLORS[g];
+    b.style.borderColor = COLORS[g] + '55';
+    b.onclick = () => {
+      if (hidden.has(g)) { hidden.delete(g); b.classList.add('on'); b.style.opacity = 1; }
+      else { hidden.add(g); b.classList.remove('on'); b.style.opacity = .4; }
+      draw();
+    };
+    bar.appendChild(b);
+  });
+}
+
+function buildLegend() {
+  const box = document.getElementById('lgs');
+  const counts = {};
+  nodes.forEach(n => counts[n.group] = (counts[n.group] || 0) + 1);
+  Object.keys(COLORS).forEach(g => {
+    if (!counts[g]) return;
+    const d = document.createElement('div');
+    d.className = 'lg';
+    d.innerHTML = `<i style="background:${COLORS[g]}"></i>${g} <span style="margin-left:auto">${counts[g]}</span>`;
+    d.onclick = () => { d.classList.toggle('off'); hidden.has(g) ? hidden.delete(g) : hidden.add(g); draw(); };
+    box.appendChild(d);
+  });
+}
+
+function simulate() {
+  // 先按分组摆到大圆上，再让连线把同组节点拉成一团
+  const groups = [...new Set(nodes.map(n => n.group))];
+  const R = 300;
+  const centers = new Map();
+  groups.forEach((g, i) => {
+    const a = (i / groups.length) * Math.PI * 2 - Math.PI / 2;
+    centers.set(g, { x: Math.cos(a) * R, y: Math.sin(a) * R });
+  });
+
+  const perGroup = new Map();
+  nodes.forEach(n => {
+    const list = perGroup.get(n.group) || [];
+    list.push(n);
+    perGroup.set(n.group, list);
+  });
+  perGroup.forEach((list, g) => {
+    const c = centers.get(g);
+    list.forEach((n, i) => {
+      const a = (i / Math.max(1, list.length)) * Math.PI * 2;
+      const rad = 26 + list.length * 2.2;
+      n.x = c.x + Math.cos(a) * rad;
+      n.y = c.y + Math.sin(a) * rad;
+      n.vx = n.vy = 0;
+    });
+  });
+
+  const LINK = 0.03, ANCHOR = 0.06, DAMP = 0.82;
+  for (let step = 0; step < 220; step++) {
+    for (const n of nodes) { n.fx = 0; n.fy = 0; }
+    // 连线弹簧
+    for (const e of edges) {
+      const dx = e.b.x - e.a.x, dy = e.b.y - e.a.y;
+      const d = Math.hypot(dx, dy) || 1;
+      const f = (d - 78) * LINK;
+      const ux = dx / d, uy = dy / d;
+      e.a.fx += ux * f; e.a.fy += uy * f;
+      e.b.fx -= ux * f; e.b.fy -= uy * f;
+    }
+    // 锚回分组中心
+    for (const n of nodes) {
+      const c = centers.get(n.group);
+      n.fx += (c.x - n.x) * ANCHOR;
+      n.fy += (c.y - n.y) * ANCHOR;
+    }
+    // 局部斥力
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const a = nodes[i], b = nodes[j];
+        let dx = b.x - a.x, dy = b.y - a.y;
+        let d2 = dx * dx + dy * dy || 1;
+        if (d2 > 12000) continue;
+        const d = Math.sqrt(d2);
+        const f = 900 / d2;
+        a.fx -= dx / d * f; a.fy -= dy / d * f;
+        b.fx += dx / d * f; b.fy += dy / d * f;
+      }
+    }
+    for (const n of nodes) {
+      n.vx = (n.vx + n.fx * 0.9) * DAMP;
+      n.vy = (n.vy + n.fy * 0.9) * DAMP;
+      n.x += n.vx; n.y += n.vy;
+    }
+  }
+}
+
+function fitView() {
+  if (!nodes.length) return;
+  const xs = nodes.map(n => n.x), ys = nodes.map(n => n.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const pad = 90;
+  const k = Math.min((W - pad * 2) / Math.max(1, maxX - minX),
+                     (H - pad * 2) / Math.max(1, maxY - minY));
+  view.k = Math.min(1.6, Math.max(0.3, k));
+  view.x = W / 2 - ((minX + maxX) / 2) * view.k;
+  view.y = H / 2 - ((minY + maxY) / 2) * view.k;
+}
+
+function neighbors(n) {
+  const s = new Set();
+  edges.forEach(e => {
+    if (e.a === n) s.add(e.b); if (e.b === n) s.add(e.a);
+  });
+  return s;
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  ctx.save();
+  ctx.translate(view.x, view.y);
+  ctx.scale(view.k, view.k);
+
+  const focus = selected || hover;
+  const near = focus ? neighbors(focus) : null;
+
+  // 边
+  for (const e of edges) {
+    const dim = (focus && e.a !== focus && e.b !== focus);
+    ctx.strokeStyle = dim ? 'rgba(90,120,160,.10)' : 'rgba(120,160,210,.28)';
+    ctx.lineWidth = (e.a === focus || e.b === focus) ? 1.8 / view.k : 1 / view.k;
+    ctx.beginPath();
+    ctx.moveTo(e.a.x, e.a.y);
+    ctx.lineTo(e.b.x, e.b.y);
+    ctx.stroke();
+  }
+
+  // 节点
+  for (const n of nodes) {
+    if (hidden.has(n.group)) continue;
+    const color = COLORS[n.group] || '#94a3b8';
+    const isFocus = n === focus;
+    const isNear = near && near.has(n);
+    const dim = focus && !isFocus && !isNear;
+    const r = (n.size || 18) / 2;
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = dim ? color + '33' : color;
+    ctx.fill();
+    if (isFocus) {
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.2 / view.k; ctx.stroke();
+      ctx.beginPath(); ctx.arc(n.x, n.y, r + 5 / view.k, 0, Math.PI * 2);
+      ctx.strokeStyle = color + '66'; ctx.lineWidth = 1 / view.k; ctx.stroke();
+    }
+    if (view.k > 0.55 && !dim) {
+      ctx.fillStyle = dim ? 'rgba(200,215,235,.35)' : '#dbe7f5';
+      ctx.font = `${11.5 / view.k}px "Segoe UI","Microsoft YaHei",sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText(n.label, n.x, n.y + r + 13 / view.k);
+    }
+  }
+  ctx.restore();
+}
+
+function pick(mx, my) {
+  const p = toWorld(mx, my);
+  let best = null, bestD = 1e9;
+  for (const n of nodes) {
+    if (hidden.has(n.group)) continue;
+    const d = Math.hypot(n.x - p.x, n.y - p.y);
+    const r = ((n.size || 18) / 2) + 6 / view.k;
+    if (d < r && d < bestD) { best = n; bestD = d; }
+  }
+  return best;
+}
+
+canvas.addEventListener('mousedown', ev => {
+  const r = canvas.getBoundingClientRect();
+  const n = pick(ev.clientX - r.left, ev.clientY - r.top);
+  pointer.down = true; pointer.moved = false;
+  pointer.sx = ev.clientX; pointer.sy = ev.clientY;
+  if (n) { pointer.mode = 'node'; pointer.node = n; canvas.classList.add('drag'); }
+  else { pointer.mode = 'pan'; canvas.classList.add('drag'); }
+});
+
+canvas.addEventListener('mousemove', ev => {
+  const r = canvas.getBoundingClientRect();
+  const mx = ev.clientX - r.left, my = ev.clientY - r.top;
+  if (pointer.down) {
+    const dx = ev.clientX - pointer.sx, dy = ev.clientY - pointer.sy;
+    if (Math.abs(dx) + Math.abs(dy) > 3) pointer.moved = true;
+    if (pointer.mode === 'node') {
+      const p = toWorld(mx, my);
+      pointer.node.x = p.x; pointer.node.y = p.y;
+      pointer.node.vx = pointer.node.vy = 0;
+    } else {
+      view.x += dx; view.y += dy;
+    }
+    pointer.sx = ev.clientX; pointer.sy = ev.clientY;
+    draw();
+    return;
+  }
+  const n = pick(mx, my);
+  if (n !== hover) {
+    hover = n;
+    canvas.style.cursor = n ? 'pointer' : 'grab';
+    draw();
+  }
+});
+
+canvas.addEventListener('mouseup', () => {
+  pointer.down = false; canvas.classList.remove('drag');
+  if (!pointer.moved) {
+    if (pointer.mode === 'node') showDetail(pointer.node);
+    else { selected = null; showDetail(null); draw(); }
+  }
+  pointer.mode = null; pointer.node = null;
+});
+
+canvas.addEventListener('wheel', ev => {
+  ev.preventDefault();
+  const r = canvas.getBoundingClientRect();
+  const mx = ev.clientX - r.left, my = ev.clientY - r.top;
+  const before = toWorld(mx, my);
+  const factor = ev.deltaY < 0 ? 1.12 : 1 / 1.12;
+  view.k = Math.min(3.2, Math.max(0.35, view.k * factor));
+  view.x = mx - before.x * view.k;
+  view.y = my - before.y * view.k;
+  draw();
+}, { passive: false });
+
+function showDetail(n) {
+  selected = n;
+  const box = document.getElementById('detail');
+  if (!n) {
+    box.innerHTML = '<div class="desc" style="color:#5d7591">点一个节点看详情，或者悬停看它连着什么。</div>';
+    draw();
+    return;
+  }
+  const color = COLORS[n.group] || '#94a3b8';
+  const rels = edges.filter(e => e.a === n || e.b === n)
+    .map(e => {
+      const other = e.a === n ? e.b : e.a;
+      const dir = e.a === n ? '→' : '←';
+      return `<div>${dir} <b>${other.label}</b>${e.label ? ' <span style="opacity:.6">' + e.label + '</span>' : ''}</div>`;
+    }).slice(0, 24).join('');
+  box.innerHTML = `
+    <div class="name" style="color:${color}">${n.label}</div>
+    <span class="tag" style="border-color:${color}55;color:${color}">${n.group}</span>
+    <span class="tag">${n.kind}</span>
+    <div class="desc">${n.desc || '（没有描述）'}</div>
+    <div class="rel">${rels || '没有连到其他节点'}</div>`;
+  draw();
+}
+
+document.getElementById('q').addEventListener('input', ev => {
+  const q = ev.target.value.trim().toLowerCase();
+  if (!q) { selected = null; showDetail(null); draw(); return; }
+  const hit = nodes.find(n => n.label.toLowerCase().includes(q) || (n.desc || '').toLowerCase().includes(q));
+  if (hit) { selected = hit; showDetail(hit); }
+});
+
+document.getElementById('rebuildBtn').onclick = async () => {
+  const btn = document.getElementById('rebuildBtn');
+  btn.textContent = '重建中…';
+  try {
+    const r = await fetch('/api/knowledge/rebuild', { method: 'POST', headers: { 'X-Token': TOKEN } });
+    const d = await r.json();
+    btn.textContent = d.ok ? '✓ 已重建' : '✗ 失败';
+    if (d.ok) { await boot(); }
+  } catch (e) { btn.textContent = '✗ 失败'; }
+  setTimeout(() => { btn.textContent = '↻ 重建'; }, 1800);
+};
+
+resize();
+boot();
+</script>
+</body>
+</html>

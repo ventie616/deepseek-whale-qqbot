@@ -18,7 +18,7 @@ import re
 import sys
 from pathlib import Path as _Path
 
-sys.path.insert(0, str(_Path(r"C:\QQBot\tools")))
+sys.path.insert(0, str(_Path(r"D:\QQrobot\tools")))
 try:
     from textnorm import fix_punct as _shared_fix  # noqa: E402
 except Exception:

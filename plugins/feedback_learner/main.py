@@ -3,7 +3,7 @@
 不是训练模型权重（DeepSeek 无微调通道），是"指令蒸馏"：
 每条被判定为"立规矩/纠正"的话，被抽成一条结构化规则，之后每轮对话和发评论都会带上。
 
-数据：C:\\QQBot\\learned_rules.json
+数据：D:\\QQrobot\\learned_rules.json
 """
 
 from __future__ import annotations
@@ -18,8 +18,8 @@ from pathlib import Path
 from astrbot.api import logger, star
 from astrbot.api.event import AstrMessageEvent, filter
 
-RULES = Path(r"C:\QQBot\learned_rules.json")
-PUSH_CFG = Path(r"C:\QQBot\bili_push.json")
+RULES = Path(r"D:\QQrobot\learned_rules.json")
+PUSH_CFG = Path(r"D:\QQrobot\bili_push.json")
 
 TRIGGER = re.compile(
     r"(以后|下次|往后|今后|"

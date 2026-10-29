@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 title SnowLuma
-cd /d C:\QQBot\snowluma
+cd /d D:\QQrobot\snowluma
 set "SNOWLUMA_HOOK_AUTOLOAD=0"
 set "SNOWLUMA_ACCEPT_EULA=1"
 set "SNOWLUMA_ACCEPT_PRIVACY=1"

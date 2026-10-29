@@ -11,10 +11,10 @@ from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.message_components import Image, Plain
 from astrbot.core.message.message_event_result import MessageChain
 
-STICKER_DIR = Path(r"C:\QQBot\stickers")
+STICKER_DIR = Path(r"D:\QQrobot\stickers")
 MISC_DIR = STICKER_DIR / "misc"
 INDEX_PATH = STICKER_DIR / "index.json"
-PENDING_DIR = Path(r"C:\QQBot\sticker_inbox\_pending")
+PENDING_DIR = Path(r"D:\QQrobot\sticker_inbox\_pending")
 
 IMAGE_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
 MAX_BYTES = 3 * 1024 * 1024

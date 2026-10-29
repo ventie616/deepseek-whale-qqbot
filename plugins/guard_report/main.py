@@ -4,8 +4,8 @@
 2026-10-24 真实事故：守护 15:11 拉起了 AstrBot，但当时 SnowLuma/QQ 也没起来，
 通知重试 180 秒后放弃，主人完全不知道——所以改成"排队 + 反复重试直到送达"。
 
-- 待通知标记：C:\\QQBot\\watchdog_restart.json（守护写）
-- 待送达队列：C:\\QQBot\\guard_pending.json（本插件维护，成功送达才删除）
+- 待通知标记：D:\\QQrobot\\watchdog_restart.json（守护写）
+- 待送达队列：D:\\QQrobot\\guard_pending.json（本插件维护，成功送达才删除）
 - 每 2 分钟尝试一次；超过 24 小时未送达则丢弃并记日志
 """
 
@@ -21,7 +21,7 @@ from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.message_components import Plain
 from astrbot.core.message.message_event_result import MessageChain
 
-ROOT = Path(r"C:\QQBot")
+ROOT = Path(r"D:\QQrobot")
 FLAG = ROOT / "watchdog_restart.json"
 PENDING = ROOT / "guard_pending.json"
 HEARTBEAT = ROOT / "watchdog_heartbeat.json"

@@ -6,8 +6,8 @@
 3. 没回会追问一次（30 分钟无回应）
 4. 生成时带上「上次聊到哪」和黏人要求
 
-配置：C:\\QQBot\\proactive_dm.json
-状态：C:\\QQBot\\proactive_dm_state.json
+配置：D:\\QQrobot\\proactive_dm.json
+状态：D:\\QQrobot\\proactive_dm_state.json
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from pathlib import Path
 import sys
 from pathlib import Path as _Path
 
-sys.path.insert(0, str(_Path(r"C:\QQBot\tools")))
+sys.path.insert(0, str(_Path(r"D:\QQrobot\tools")))
 try:
     from textnorm import fix_punct as _fix_punct  # noqa: E402
 except Exception:
@@ -35,14 +35,14 @@ from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.message_components import Plain
 from astrbot.core.message.message_event_result import MessageChain
 
-CONFIG_PATH = Path(r"C:\QQBot\proactive_dm.json")
-STATE_PATH = Path(r"C:\QQBot\proactive_dm_state.json")
-PERSONA_DB = Path(r"C:\QQBot\astrbot\data\data_v4.db")
-CHAT_ARCHIVE = Path(r"C:\QQBot\chat_archive")
+CONFIG_PATH = Path(r"D:\QQrobot\proactive_dm.json")
+STATE_PATH = Path(r"D:\QQrobot\proactive_dm_state.json")
+PERSONA_DB = Path(r"D:\QQrobot\astrbot\data\data_v4.db")
+CHAT_ARCHIVE = Path(r"D:\QQrobot\chat_archive")
 
 DEFAULTS = {
     "enabled": True,
-    "target_qq": "YOUR_QQ",
+    "target_qq": "3328480063",
     "min_minutes": 45,
     "max_minutes": 90,
     "active_hours": [[8.5, 23.5]],
@@ -169,7 +169,7 @@ class Main(star.Star):
 
     def _mood(self) -> str:
         try:
-            d = json.loads(Path(r"C:\QQBot\mood.json").read_text(encoding="utf-8"))
+            d = json.loads(Path(r"D:\QQrobot\mood.json").read_text(encoding="utf-8"))
             if d.get("date"):
                 return f"{d.get('note')}（{d.get('mood')}）"
         except Exception:
@@ -179,7 +179,7 @@ class Main(star.Star):
     def _share_material(self) -> str:
         """挑一件"今天发生的小事"当分享素材。"""
         try:
-            p = Path(r"C:\QQBot\bili_activity.jsonl")
+            p = Path(r"D:\QQrobot\bili_activity.jsonl")
             if p.exists():
                 lines = [l for l in p.read_text(encoding="utf-8", errors="replace").splitlines() if l.strip()]
                 for line in reversed(lines[-5:]):
@@ -196,7 +196,7 @@ class Main(star.Star):
 
     def _memory_hint(self) -> str:
         try:
-            data = json.loads(Path(r"C:\QQBot\bili_memory.json").read_text(encoding="utf-8"))
+            data = json.loads(Path(r"D:\QQrobot\bili_memory.json").read_text(encoding="utf-8"))
             used = set(self.state.get("used_bvid") or [])
             fresh = [m for m in data if m.get("bvid") not in used][:2]
             if not fresh:

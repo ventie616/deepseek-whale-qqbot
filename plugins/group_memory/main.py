@@ -2,7 +2,7 @@
 
 设计目标：花更少的 token，换来"记得住人 / 记得住聊过什么 / 接得上话"。
 
-数据：C:\\QQBot\\group_memory.json
+数据：D:\\QQrobot\\group_memory.json
 - members[umo][uid] = {name, aliases, notes[], count, last}
 - summary[umo] = {text, topic, at}
 - buffer[umo] = ["昵称: 内容", ...] 最近若干条，攒够就压缩成摘要
@@ -31,7 +31,7 @@ def _extra(req, text: str) -> None:
     """注意：extra_user_content_parts 会被写进会话历史，越攒越贵，
     所以这里仍然写 system_prompt（只在当次生效，不进历史）。"""
     req.system_prompt += text
-STATE = Path(r"C:\QQBot\group_memory.json")
+STATE = Path(r"D:\QQrobot\group_memory.json")
 SUMMARY_EVERY = 24          # 攒够多少条压一次摘要
 BUFFER_MAX = 48
 MAX_NOTES = 5

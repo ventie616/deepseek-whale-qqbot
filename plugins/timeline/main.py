@@ -23,7 +23,7 @@ from pathlib import Path
 from astrbot.api import logger, star
 from astrbot.api.event import AstrMessageEvent, filter
 
-ROOT = Path(r"C:\QQBot")
+ROOT = Path(r"D:\QQrobot")
 ARCHIVE = ROOT / "chat_archive"
 ACTIVITY = ROOT / "bili_activity.jsonl"
 MOOD = ROOT / "mood.json"

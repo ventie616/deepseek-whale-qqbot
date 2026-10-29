@@ -1,7 +1,7 @@
 """聊天存档：把群聊/私聊原文按天追加到 JSONL，零 token 成本。
 
 目录结构：
-  C:\\QQBot\\chat_archive\\<平台_会话类型_会话号>\\<YYYY-MM-DD>.jsonl
+  D:\\QQrobot\\chat_archive\\<平台_会话类型_会话号>\\<YYYY-MM-DD>.jsonl
 
 每行：{"t": "2026-10-22T23:40:01", "role": "user|bot", "uid": "...", "name": "...", "text": "..."}
 
@@ -21,7 +21,7 @@ from astrbot.api.message_components import Plain
 
 import json
 
-ROOT = Path(r"C:\QQBot\chat_archive")
+ROOT = Path(r"D:\QQrobot\chat_archive")
 KEEP_DAYS = 30
 MAX_TEXT = 600
 

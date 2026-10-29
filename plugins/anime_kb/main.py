@@ -4,7 +4,7 @@
 - 用户消息里命中词条/作品名 => 只注入命中那几条解释（省 token）
 - 另提供 anime_lookup 工具，让她主动查词
 
-数据：C:\\QQBot\\anime_kb\\glossary.json / works.json（改完不用重启，按 mtime 热加载）
+数据：D:\\QQrobot\\anime_kb\\glossary.json / works.json（改完不用重启，按 mtime 热加载）
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from pathlib import Path
 from astrbot.api import logger, star
 from astrbot.api.event import AstrMessageEvent, filter
 
-KB_DIR = Path(r"C:\QQBot\anime_kb")
+KB_DIR = Path(r"D:\QQrobot\anime_kb")
 GLOSSARY = KB_DIR / "glossary.json"
 WORKS = KB_DIR / "works.json"
 

@@ -24,9 +24,9 @@ from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.message_components import File, Record
 from astrbot.core.message.message_event_result import MessageChain
 
-LIB = Path(r"C:\QQBot\voice_clips")
+LIB = Path(r"D:\QQrobot\voice_clips")
 INDEX = LIB / "index.json"
-ARCHIVE = Path(r"C:\QQBot\chat_archive")
+ARCHIVE = Path(r"D:\QQrobot\chat_archive")
 PENDING_KEY = "pending_clip"
 FULL_HINTS = ("整首", "完整", "全曲", "全长")
 

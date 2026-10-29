@@ -5,7 +5,7 @@
 - 每 6 小时检查一次，当天还没备份就备一份
 - 保留 14 天，自动清理更早的
 - 指令：/备份 立刻备一份并报告
-补回来：把 backup/日期/ 里的文件拷回 C:\\QQBot 对应位置，重启 AstrBot。
+补回来：把 backup/日期/ 里的文件拷回 D:\\QQrobot 对应位置，重启 AstrBot。
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from pathlib import Path
 from astrbot.api import logger, star
 from astrbot.api.event import AstrMessageEvent, filter
 
-ROOT = Path(r"C:\QQBot")
+ROOT = Path(r"D:\QQrobot")
 BACKUP = ROOT / "backup"
 KEEP_DAYS = 14
 

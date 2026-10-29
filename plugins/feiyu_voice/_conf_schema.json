@@ -1,0 +1,80 @@
+{
+  "base_url": {
+    "description": "声音服务地址",
+    "type": "string",
+    "default": "http://127.0.0.1:9880"
+  },
+  "api_key": {
+    "description": "声音服务API Key（私密）",
+    "type": "string",
+    "default": "",
+    "obvious_hint": true
+  },
+  "voice": {
+    "description": "配置的声音ID",
+    "type": "string",
+    "default": "feiyu"
+  },
+  "style": {
+    "description": "说话默认风格",
+    "type": "string",
+    "default": "cute",
+    "options": [
+      "cute",
+      "gentle"
+    ]
+  },
+  "emotion": {
+    "description": "说话情绪（空/无 = 不加）",
+    "type": "string",
+    "default": "奶音",
+    "options": [
+      "无",
+      "奶音",
+      "开心"
+    ]
+  },
+  "speed": {
+    "description": "语速",
+    "type": "float",
+    "default": 0.9
+  },
+  "liveliness": {
+    "description": "起伏强度",
+    "type": "float",
+    "default": 0.35
+  },
+  "chunk": {
+    "description": "按标点分句（关=整段）",
+    "type": "bool",
+    "default": false
+  },
+  "provider": {
+    "description": "语音引擎：qwen=阿里云 cosyvoice-v2；local=本机 9880 服务",
+    "type": "string",
+    "default": "qwen",
+    "options": [
+      "qwen",
+      "local"
+    ]
+  },
+  "qwen_voice": {
+    "description": "qwen 声线（longhua_v2 最高最童；longwan_v2 / longmiao_v2 少女；longxiaochun_v2 温柔）",
+    "type": "string",
+    "default": "longhua_v2",
+    "options": [
+      "longhua_v2",
+      "longwan_v2",
+      "longmiao_v2",
+      "longxiaochun_v2",
+      "longxiaoxia_v2",
+      "longyue_v2",
+      "longshu_v2"
+    ]
+  },
+  "qwen_speed": {
+    "description": "qwen 语速（1.0 正常，0.9 稍慢）",
+    "type": "float",
+    "default": 1.0
+  }
+}

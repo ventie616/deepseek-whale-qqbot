@@ -38,8 +38,14 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import urllib.request
 from urllib.parse import parse_qs, quote, urlparse
 
-ROOT = pathlib.Path(r"C:\QQBot")
+ROOT = pathlib.Path(r"D:\QQrobot")
 DASH = ROOT / "dashboard" / "index.html"
+
+TTS_TUNER = ROOT / "dashboard" / "tts_tuner.html"
+KNOWLEDGE = ROOT / "dashboard" / "knowledge.html"
+KNOWLEDGE_JSON = ROOT / "dashboard" / "knowledge.json"
+VOICE_BASE = "http://127.0.0.1:9880"
+VOICE_KEY_FILE = ROOT / "secrets" / "feiyu_voice_key.txt"
 TOKEN_FILE = ROOT / "dashboard" / ".token"
 TRIGGER = ROOT / "bili_trigger.json"
 TRIGGER_RESULT = ROOT / "bili_trigger_result.json"
@@ -138,6 +144,12 @@ def status() -> dict:
             "rules": len(rules),
             "today_comments": count_comments_today(),
         },
+        "voice": {
+            "provider": (read_json(ROOT / "astrbot" / "data" / "config" / "feiyu_voice_config.json", {}) or {}).get("provider", ""),
+            "voice": (read_json(ROOT / "astrbot" / "data" / "config" / "feiyu_voice_config.json", {}) or {}).get("qwen_voice", ""),
+        },
+        "image": read_json(ROOT / "image_gen.json", {}) or {},
+        "router": read_json(ROOT / "cost_router.json", {}) or {},
         "services": {
             "astrbot": port_up(6185),
             "snowluma": port_up(5099),
@@ -657,6 +669,253 @@ def diary_read(day: str) -> dict:
     return {"ok": True, "date": day, "text": text, "lines": lines, "chars": len(text)}
 
 
+
+def voice_key() -> str:
+    try:
+        return VOICE_KEY_FILE.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def voice_request(path: str, body: dict | None = None, raw: bool = False):
+    import urllib.request
+
+    data = None if body is None else json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(
+        VOICE_BASE + path,
+        data=data,
+        method="POST" if body is not None else "GET",
+        headers={
+            "Authorization": "Bearer " + voice_key(),
+            "Content-Type": "application/json",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=30) as r:
+        payload = r.read()
+        if raw:
+            return payload
+        return json.loads(payload or b"{}")
+
+
+
+def voice_status() -> dict:
+    """语音链路现状：Qwen 出声 + 本地 RVC 换声。"""
+    import json as _json
+
+    cfg = {}
+    try:
+        cfg = _json.loads((ROOT / "astrbot" / "data" / "config" / "feiyu_voice_config.json")
+                          .read_text(encoding="utf-8-sig"))
+    except Exception:
+        pass
+    state = {}
+    try:
+        state = _json.loads((ROOT / "voice_reply_state.json").read_text(encoding="utf-8"))
+    except Exception:
+        pass
+
+    caps = {}
+    try:
+        import urllib.request as _ur
+        key = (ROOT / "secrets" / "feiyu_voice_key.txt").read_text(encoding="utf-8").strip()
+        req = _ur.Request("http://127.0.0.1:9880/v1/capabilities",
+                          headers={"Authorization": f"Bearer {key}"})
+        caps = _json.loads(_ur.urlopen(req, timeout=4).read())
+    except Exception:
+        caps = {}
+
+    out_dir = ROOT / "voice_out"
+    keep_prefix = ("her_", "qwen_", "auto_", "voice_", "coverA", "crepe_final")
+    files = [f for f in out_dir.glob("*.wav")
+             if f.name.startswith(keep_prefix) and "_native" not in f.name]
+    files = sorted(files, key=lambda x: x.stat().st_mtime, reverse=True)[:8]
+
+    def dur(f):
+        try:
+            import wave
+
+            with wave.open(str(f), "rb") as w:
+                return round(w.getnframes() / w.getframerate(), 1)
+        except Exception:
+            return None
+
+    return {
+        "online": port_up(9880),
+        "provider": cfg.get("provider", ""),
+        "qwen_voice": cfg.get("qwen_voice", ""),
+        "qwen_speed": cfg.get("qwen_speed", 1.0),
+        "engine_tts": "qwen cosyvoice-v2" if str(cfg.get("provider", "")).startswith("qwen") else "local",
+        "rvc_ready": any(x.get("available") for x in (caps.get("rvc") or [])),
+        "local_tts_ready": any(x.get("available") for x in (caps.get("tts") or [])),
+        "key_present": (ROOT / "secrets" / "qwen_tts_key.txt").exists(),
+        "today": int(state.get("count", 0)) if state.get("date") == datetime.now().strftime("%Y-%m-%d") else 0,
+        "date": datetime.now().strftime("%Y-%m-%d") if state.get("date") == datetime.now().strftime("%Y-%m-%d") else "今天还没发",
+        "files": [{"name": f.name, "kb": round(f.stat().st_size / 1024), "sec": dur(f)} for f in files],
+    }
+
+
+def image_records(limit: int = 12) -> dict:
+    import json as _json
+
+    rows = []
+    path = ROOT / "image_gen.jsonl"
+    if path.exists():
+        for line in path.read_text(encoding="utf-8").splitlines()[-limit:]:
+            try:
+                rec = _json.loads(line)
+            except Exception:
+                continue
+            f = pathlib.Path(rec.get("file", ""))
+            rec["exists"] = f.exists()
+            rec["name"] = f.name
+            rows.append(rec)
+    rows.reverse()
+    total = sum(1 for _ in path.read_text(encoding="utf-8").splitlines()) if path.exists() else 0
+    return {"total": total, "items": rows}
+
+
+def wander_records(limit: int = 8) -> dict:
+    import json as _json
+
+    rows = []
+    path = ROOT / "web_wander.jsonl"
+    if path.exists():
+        for line in path.read_text(encoding="utf-8").splitlines()[-limit:]:
+            try:
+                rows.append(_json.loads(line))
+            except Exception:
+                continue
+    rows.reverse()
+    return {"total": sum(1 for _ in path.read_text(encoding="utf-8").splitlines()) if path.exists() else 0,
+            "items": rows}
+
+
+def slang_status() -> dict:
+    import json as _json
+
+    try:
+        d = _json.loads((ROOT / "slang.json").read_text(encoding="utf-8"))
+    except Exception:
+        return {"updated": "", "terms": []}
+    return {"updated": d.get("updated", ""), "terms": (d.get("terms") or [])[:16]}
+
+
+
+VOICE_META = [
+    ("longhua_v2", "longhua · 童声", 292),
+    ("longwan_v2", "longwan · 少女", 226),
+    ("longmiao_v2", "longmiao · 甜少女", 226),
+    ("longxiaochun_v2", "longxiaochun · 温柔", 210),
+    ("longxiaoxia_v2", "longxiaoxia · 温柔2", 198),
+    ("longyue_v2", "longyue · 成熟", 198),
+]
+
+
+def tts_voices() -> dict:
+    out = []
+    for vid, name, f0 in VOICE_META:
+        sample = ROOT / "voice_out" / "qwen" / f"sample_{vid}.wav"
+        out.append({"id": vid, "name": name, "f0": f0,
+                    "sample": sample.name if sample.exists() else ""})
+    return {"voices": out}
+
+
+def tts_config() -> dict:
+    try:
+        return read_json(ROOT / "astrbot" / "data" / "config" / "feiyu_voice_config.json", {}) or {}
+    except Exception:
+        return {}
+
+
+def tts_save(payload: dict) -> dict:
+    path = ROOT / "astrbot" / "data" / "config" / "feiyu_voice_config.json"
+    cfg = tts_config()
+    for key in ("provider", "qwen_voice", "qwen_speed"):
+        if key in payload:
+            cfg[key] = payload[key]
+    path.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {"ok": True, "config": {k: cfg.get(k) for k in ("provider", "qwen_voice", "qwen_speed")}}
+
+
+def _errlog(where: str, exc: Exception) -> None:
+    import traceback
+
+    try:
+        with (ROOT / "dashboard_errors.log").open("a", encoding="utf-8") as fh:
+            fh.write(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {where}\n")
+            fh.write(traceback.format_exc()[:3000])
+    except OSError:
+        pass
+
+
+def tts_preview(payload: dict) -> dict:
+    """跑一次完整链路：Qwen 出声（可再走 RVC），返回文件名和耗时。"""
+    import sys
+    import time
+
+    sys.path.insert(0, str(ROOT / "astrbot" / "data" / "plugins" / "feiyu_voice"))
+    from qwen_tts import synthesize  # type: ignore
+
+    text = str(payload.get("text") or "").strip()[:200] or "你好呀，我是大肥鱼。"
+    voice = str(payload.get("voice") or tts_config().get("qwen_voice") or "longhua_v2")
+    try:
+        speed = float(payload.get("speed", tts_config().get("qwen_speed", 1.0)))
+    except (TypeError, ValueError):
+        speed = 1.0
+    use_rvc = bool(payload.get("rvc", True))
+
+    stamp = datetime.now().strftime("%H%M%S")
+    raw = ROOT / "voice_out" / f"try_{stamp}.wav"
+    t0 = time.time()
+    import asyncio
+
+    asyncio.run(synthesize(text, raw, voice=voice, speed=speed))
+    ms_qwen = round((time.time() - t0) * 1000)
+
+    result, ms_rvc = raw, 0
+    if use_rvc:
+        try:
+            from rvc_client import convert  # type: ignore
+
+            t1 = time.time()
+            result = convert(raw, ROOT / "voice_out" / f"try_{stamp}_her.wav")
+            ms_rvc = round((time.time() - t1) * 1000)
+        except Exception:
+            result, ms_rvc = raw, -1
+
+    try:
+        import wave
+
+        with wave.open(str(result), "rb") as w:
+            sec = round(w.getnframes() / w.getframerate(), 2)
+    except Exception:
+        sec = None
+    return {"file": result.name, "sec": sec, "ms_qwen": ms_qwen, "ms_rvc": ms_rvc,
+            "rvc": ms_rvc >= 0 and use_rvc}
+
+
+
+def cover_records(limit: int = 8) -> dict:
+    """最近的翻唱 + 曲库数量。"""
+    rows = []
+    path = ROOT / "cover_sing.jsonl"
+    if path.exists():
+        for line in path.read_text(encoding="utf-8").splitlines()[-limit:]:
+            try:
+                rows.append(json.loads(line))
+            except Exception:
+                continue
+    rows.reverse()
+    lib = 0
+    try:
+        idx = json.loads((ROOT / "voice_clips" / "index.json").read_text(encoding="utf-8"))
+        lib = len([f for f in idx.get("fulls", [])
+                   if (ROOT / "voice_clips" / f["file"]).exists()])
+    except Exception:
+        pass
+    return {"library": lib, "items": rows}
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "WhaleConsole/1.0"
 
@@ -679,7 +938,13 @@ class Handler(BaseHTTPRequestHandler):
         self._send(code, json.dumps(data, ensure_ascii=False).encode(), "application/json; charset=utf-8")
 
     def _authorized(self) -> bool:
-        return self.headers.get("X-Token") == TOKEN
+        if self.headers.get("X-Token") == TOKEN:
+            return True
+        try:
+            q = parse_qs(urlparse(self.path).query)
+            return (q.get("token") or [""])[0] == TOKEN
+        except Exception:
+            return False
 
     def _body(self) -> dict:
         try:
@@ -698,6 +963,93 @@ class Handler(BaseHTTPRequestHandler):
                 return
             html = DASH.read_text(encoding="utf-8").replace("__TOKEN__", TOKEN)
             self._send(200, html.encode(), "text/html; charset=utf-8")
+            return
+        if path == "/knowledge":
+            if not KNOWLEDGE.exists():
+                self._send(404, b"knowledge.html missing", "text/plain; charset=utf-8")
+                return
+            self._send(200, KNOWLEDGE.read_text(encoding="utf-8").encode(), "text/html; charset=utf-8")
+            return
+        if path == "/api/knowledge":
+            if not KNOWLEDGE_JSON.exists():
+                self._json({"nodes": [], "edges": [], "generated": ""})
+                return
+            self._send(200, KNOWLEDGE_JSON.read_bytes(), "application/json; charset=utf-8")
+            return
+        if path == "/tts-tuner":
+            if not TTS_TUNER.exists():
+                self._send(404, b"tts_tuner.html missing", "text/plain; charset=utf-8")
+                return
+            html = TTS_TUNER.read_text(encoding="utf-8")
+            html = html.replace("<head>", '<head>\n<script>window.__DSH_TOKEN__="' + TOKEN + '";</script>', 1)
+            self._send(200, html.encode(), "text/html; charset=utf-8")
+            return
+        if path == "/api/tts/job":
+            q = parse_qs(u.query)
+            job_id = (q.get("id") or [""])[0].strip()
+            if not job_id:
+                self._json({"ok": False, "error": "missing id"}, 400)
+                return
+            try:
+                self._json({"ok": True, "job": voice_request("/v1/jobs/" + job_id)})
+            except Exception as exc:  # noqa: BLE001
+                self._json({"ok": False, "error": str(exc)}, 502)
+            return
+        if path == "/api/tts/audio":
+            q = parse_qs(u.query)
+            job_id = (q.get("id") or [""])[0].strip()
+            if not job_id:
+                self._send(400, b"missing id", "text/plain")
+                return
+            try:
+                data = voice_request("/v1/jobs/" + job_id + "/audio", raw=True)
+                self._send(200, data, "audio/wav")
+            except Exception as exc:  # noqa: BLE001
+                self._send(502, str(exc).encode(), "text/plain; charset=utf-8")
+            return
+        if path == "/api/voice":
+            self._json(voice_status())
+            return
+        if path == "/api/image_gen":
+            self._json(image_records())
+            return
+        if path == "/api/wander":
+            self._json(wander_records())
+            return
+        if path == "/api/slang":
+            self._json(slang_status())
+            return
+        if path == "/api/image/file":
+            q = parse_qs(u.query)
+            name = (q.get("name") or [""])[0]
+            target = (ROOT / "voice_out" / "gen" / name).resolve()
+            base = (ROOT / "voice_out" / "gen").resolve()
+            if not target.exists() or base not in target.parents:
+                self._send(404, b"not found", "text/plain")
+                return
+            ctype = "image/png" if target.suffix.lower() == ".png" else "image/jpeg"
+            self._send(200, target.read_bytes(), ctype)
+            return
+        if path == "/api/tts/voices":
+            self._json(tts_voices())
+            return
+        if path == "/api/tts/config":
+            cfg = tts_config()
+            safe = {k: cfg.get(k) for k in ("provider", "qwen_voice", "qwen_speed", "style", "speed")}
+            self._json(safe)
+            return
+        if path == "/api/tts/file":
+            q = parse_qs(u.query)
+            name = (q.get("name") or [""])[0]
+            base = (ROOT / "voice_out").resolve()
+            target = (base / name).resolve()
+            if not target.exists() or base not in target.parents or target.suffix.lower() != ".wav":
+                self._send(404, b"not found", "text/plain")
+                return
+            self._send(200, target.read_bytes(), "audio/wav")
+            return
+        if path == "/api/covers":
+            self._json(cover_records())
             return
         if path == "/api/status":
             self._json(status())
@@ -833,6 +1185,54 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---------- POST ----------
     def do_POST(self) -> None:  # noqa: N802
+
+        u = urlparse(self.path)
+        if u.path == "/api/knowledge/rebuild":
+            if not self._authorized():
+                self._json({"ok": False, "error": "unauthorized"}, 401)
+                return
+            try:
+                import subprocess
+                import sys
+
+                out = subprocess.run(
+                    [sys.executable, str(ROOT / "tools" / "build_knowledge_graph.py")],
+                    capture_output=True, text=True, encoding="utf-8", timeout=120,
+                )
+                self._json({"ok": out.returncode == 0, "output": (out.stdout or out.stderr)[:800]})
+            except Exception as exc:  # noqa: BLE001
+                self._json({"ok": False, "error": str(exc)}, 500)
+            return
+        if u.path == "/api/tts/preview":
+            if not self._authorized():
+                self._json({"ok": False, "error": "unauthorized"}, 401)
+                return
+            payload = self._body() or {}
+            try:
+                self._json(tts_preview(payload))
+            except Exception as exc:  # noqa: BLE001
+                _errlog("tts/preview " + str(payload)[:200], exc)
+                self._json({"error": f"{type(exc).__name__}: {exc}"}, 500)
+            return
+        if u.path == "/api/tts/save":
+            if not self._authorized():
+                self._json({"ok": False, "error": "unauthorized"}, 401)
+                return
+            try:
+                self._json(tts_save(self._body() or {}))
+            except Exception as exc:  # noqa: BLE001
+                self._json({"ok": False, "error": str(exc)}, 500)
+            return
+        if u.path == "/api/tts/speech":
+            if not self._authorized():
+                self._json({"ok": False, "error": "unauthorized"}, 401)
+                return
+            payload = self._body()
+            try:
+                self._json({"ok": True, "job": voice_request("/v1/speech", payload)})
+            except Exception as exc:  # noqa: BLE001
+                self._json({"ok": False, "error": str(exc)}, 502)
+            return
         if not self._authorized():
             self._json({"ok": False, "error": "bad token"}, 403)
             return

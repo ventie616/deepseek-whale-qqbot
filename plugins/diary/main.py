@@ -15,7 +15,7 @@ import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-sys.path.insert(0, str(Path(r"C:\QQBot\tools")))
+sys.path.insert(0, str(Path(r"D:\QQrobot\tools")))
 try:
     from textnorm import fix_punct as _tn_fix  # noqa: E402
 except Exception:
@@ -36,7 +36,7 @@ def _extra(req, text: str) -> None:
     req.system_prompt += text
 from astrbot.api.event import AstrMessageEvent, filter
 
-ROOT = Path(r"C:\QQBot")
+ROOT = Path(r"D:\QQrobot")
 DIARY = ROOT / "diary"
 ARCHIVE = ROOT / "chat_archive"
 ACTIVITY = ROOT / "bili_activity.jsonl"

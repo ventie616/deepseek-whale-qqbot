@@ -21,7 +21,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-ROOT = Path(r"C:\QQBot")
+ROOT = Path(r"D:\QQrobot")
 LOG_DIR = ROOT / "logs"
 LOG = LOG_DIR / "watchdog.log"
 HEARTBEAT = ROOT / "watchdog_heartbeat.json"

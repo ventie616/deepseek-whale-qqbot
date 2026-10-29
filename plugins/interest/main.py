@@ -8,7 +8,7 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(r"C:\QQBot\tools")))
+sys.path.insert(0, str(Path(r"D:\QQrobot\tools")))
 try:
     from interest import (  # noqa: E402
     PROFILE,
@@ -19,7 +19,7 @@ try:
     topic_hint,
 )
 except Exception:  # pragma: no cover
-    PROFILE = Path(r"C:\QQBot\interest_profile.json")
+    PROFILE = Path(r"D:\QQrobot\interest_profile.json")
     build_profile = None
     record_snapshot = None
     compute_drift = None

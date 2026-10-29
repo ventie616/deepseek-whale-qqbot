@@ -1,10 +1,10 @@
 @echo off
 setlocal
 title QQBot Launcher
-cd /d C:\QQBot
+cd /d D:\QQrobot
 
-if exist "C:\QQBot\watchdog_pause" (
-  del /q "C:\QQBot\watchdog_pause"
+if exist "D:\QQrobot\watchdog_pause" (
+  del /q "D:\QQrobot\watchdog_pause"
   echo   watchdog_pause removed ^(watchdog will supervise again^)
   echo.
 )
@@ -20,11 +20,11 @@ pause
 echo.
 
 echo [1/2] Starting SnowLuma ...
-start "SnowLuma" cmd /c C:\QQBot\_snowluma.bat
+start "SnowLuma" cmd /c D:\QQrobot\_snowluma.bat
 ping -n 5 127.0.0.1 >nul
 
 echo [2/2] Starting AstrBot ...
-start "AstrBot" cmd /c C:\QQBot\_astrbot.bat
+start "AstrBot" cmd /c D:\QQrobot\_astrbot.bat
 
 echo.
 echo Done. Wait about 20 seconds, then open SnowLuma WebUI and click

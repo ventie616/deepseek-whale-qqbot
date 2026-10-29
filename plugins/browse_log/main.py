@@ -1,6 +1,6 @@
 """浏览记录查看器：/刷了什么 看文字版，/刷记录 生成可点的网页。
 
-数据源：C:\\QQBot\\bili_watched.jsonl（bili_pusher 每次刷都会追加，含被拒绝的）
+数据源：D:\\QQrobot\\bili_watched.jsonl（bili_pusher 每次刷都会追加，含被拒绝的）
 """
 
 from __future__ import annotations
@@ -14,9 +14,9 @@ from pathlib import Path
 from astrbot.api import logger, star
 from astrbot.api.event import AstrMessageEvent, filter
 
-WATCH = Path(r"C:\QQBot\bili_watched.jsonl")
-PIC_CACHE = Path(r"C:\QQBot\bili_pic_cache.json")
-OUT_HTML = Path(r"C:\QQBot\reports\browse.html")
+WATCH = Path(r"D:\QQrobot\bili_watched.jsonl")
+PIC_CACHE = Path(r"D:\QQrobot\bili_pic_cache.json")
+OUT_HTML = Path(r"D:\QQrobot\reports\browse.html")
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 
 

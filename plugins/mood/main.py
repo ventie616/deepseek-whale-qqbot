@@ -1,6 +1,6 @@
 """每日心情：让她每天状态不一样，但大部分时间是开心的。
 
-- 状态文件：C:\\QQBot\\mood.json
+- 状态文件：D:\\QQrobot\\mood.json
 - 每天第一次被用到时掷一次（加权：开心 65% / 平静 18% / 有一点累 10% / 有点丧 5% / 炸毛 2%）
 - 注入系统提示，影响语气但不改变人格
 - 指令：/心情（看今天）、/心情 换（重掷，一天一次）
@@ -29,7 +29,7 @@ def _extra(req, text: str) -> None:
     req.system_prompt += text
 from astrbot.api.event import AstrMessageEvent, filter
 
-STATE = Path(r"C:\QQBot\mood.json")
+STATE = Path(r"D:\QQrobot\mood.json")
 
 # (键, 权重, 一句话, 语气提示)
 # 大部分时间是开心的：开心/元气 合计 78%

@@ -49,3 +49,9 @@ guard_pending.json
 watchdog_heartbeat.json
 watchdog.pid
 persona/whale-girl.old.txt
+
+# 本机密钥目录（OneBot / 云端 API / 声音服务）
+/secrets/*
+!/secrets/README.txt
+!/secrets/*.example.txt
+*.key

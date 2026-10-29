@@ -19,9 +19,9 @@ from astrbot.core.message.message_event_result import MessageChain
 
 import urllib.request
 
-ACCOUNT = Path(r"C:\QQBot\bili_account.json")
-PUSH_CFG = Path(r"C:\QQBot\bili_push.json")
-STATE = Path(r"C:\QQBot\bili_login_state.json")
+ACCOUNT = Path(r"D:\QQrobot\bili_account.json")
+PUSH_CFG = Path(r"D:\QQrobot\bili_push.json")
+STATE = Path(r"D:\QQrobot\bili_login_state.json")
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 CHECK_HOUR = 9
 

@@ -16,7 +16,7 @@ from pathlib import Path
 
 from astrbot.api import logger, star
 
-DB = Path(r"C:\QQBot\astrbot\data\data_v4.db")
+DB = Path(r"D:\QQrobot\astrbot\data\data_v4.db")
 PLACEHOLDER = "[之前看过的一张图，内容已不在上下文里]"
 
 # 历史里残留的注入块（额外块那次改动留下的），整段丢掉

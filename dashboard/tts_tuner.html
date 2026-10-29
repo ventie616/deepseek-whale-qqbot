@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>声音调试台 · 鲸鱼娘</title>
+<style>
+  :root { --bg:#0b1118; --card:#121b26; --line:#22303f; --txt:#dbe7f3; --sub:#8ba3c0; --acc:#38bdf8; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font:14px/1.6 system-ui,"Microsoft YaHei",sans-serif; }
+  header { padding:18px 24px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:14px; }
+  header h1 { font-size:17px; margin:0; }
+  header .tag { font-size:12px; color:var(--sub); }
+  main { padding:20px 24px; max-width:1160px; }
+  .grid { display:grid; grid-template-columns:1.15fr .85fr; gap:16px; }
+  @media (max-width:900px){ .grid{grid-template-columns:1fr;} }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 18px; }
+  h2 { font-size:14px; margin:0 0 12px; color:var(--sub); font-weight:600; letter-spacing:.3px; }
+  .voices { display:grid; grid-template-columns:repeat(auto-fill,minmax(168px,1fr)); gap:10px; }
+  .v { border:1px solid var(--line); border-radius:10px; padding:10px 12px; cursor:pointer; transition:.15s; }
+  .v:hover { border-color:#3b556f; }
+  .v.on { border-color:var(--acc); background:#0e2436; box-shadow:0 0 0 1px var(--acc) inset; }
+  .v b { display:block; font-size:13px; }
+  .v span { font-size:11.5px; color:var(--sub); }
+  .v .play { margin-top:8px; font-size:12px; color:var(--acc); background:none; border:0; padding:0; cursor:pointer; }
+  .row { display:flex; align-items:center; gap:12px; margin:12px 0; }
+  .row > label { width:74px; color:var(--sub); font-size:13px; flex:none; }
+  .row .toggle { white-space:nowrap; }
+  input[type=range] { flex:1; accent-color:var(--acc); }
+  .val { width:52px; text-align:right; font-variant-numeric:tabular-nums; color:var(--acc); }
+  textarea { width:100%; min-height:92px; background:#0d1620; color:var(--txt); border:1px solid var(--line);
+             border-radius:8px; padding:10px; font:inherit; resize:vertical; }
+  .btns { display:flex; gap:10px; margin-top:12px; flex-wrap:wrap; }
+  button.main { background:var(--acc); color:#04121d; border:0; border-radius:8px; padding:9px 16px; font-weight:600; cursor:pointer; }
+  button.ghost { background:transparent; color:var(--txt); border:1px solid var(--line); border-radius:8px; padding:9px 16px; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:default; }
+  .stat { font-size:12.5px; color:var(--sub); margin-top:10px; white-space:pre-line; }
+  audio { width:100%; margin-top:12px; }
+  .toggle { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--sub); width:auto; }
+  .note { font-size:12px; color:#6b829e; margin-top:14px; line-height:1.7; }
+  .badge { font-size:11px; padding:2px 7px; border-radius:99px; background:#0e2436; color:var(--acc); border:1px solid #1d4763; }
+</style>
+</head>
+<body>
+<header>
+  <h1>声音调试台</h1>
+  <span class="tag">Qwen cosyvoice-v2 出声 → 本地 RVC 换成她的音色</span>
+  <span class="badge" id="cur">读取中…</span>
+</header>
+<main>
+  <div class="grid">
+    <div class="card">
+      <h2>选声线（点卡片选中，点播放先听原声）</h2>
+      <div class="voices" id="voices">读取中…</div>
+
+      <div class="row" style="margin-top:18px">
+        <label>语速</label>
+        <input type="range" id="speed" min="0.7" max="1.4" step="0.05" value="1">
+        <span class="val" id="speedVal">1.00</span>
+      </div>
+      <div class="row">
+        <label>换声</label>
+        <label class="toggle"><input type="checkbox" id="rvc" checked> 走 RVC（换成她的音色）</label>
+      </div>
+
+      <h2 style="margin-top:20px">试听一句</h2>
+      <textarea id="text">今天有点累，你要是敢说教我就咬你。其实我一直在等你说话，只是不好意思先开口。</textarea>
+      <div class="btns">
+        <button class="main" id="try">生成试听</button>
+        <button class="ghost" id="save">保存为默认</button>
+      </div>
+      <div class="stat" id="stat"></div>
+      <audio id="audio" controls style="display:none"></audio>
+    </div>
+
+    <div class="card">
+      <h2>说明</h2>
+      <div class="note">
+        <b style="color:#cfe3f5">链路</b><br>
+        Qwen 出声（约 3 秒）→ 本地 RVC 换声（约 2–12 秒，冷启动慢）→ 发 QQ<br><br>
+        <b style="color:#cfe3f5">声线</b><br>
+        基频越高越“小”。longhua 292 Hz 最童，longyue 198 Hz 最成熟。<br><br>
+        <b style="color:#cfe3f5">已经去掉的</b><br>
+        奶音 / 开心情绪、逗号停顿、起伏度 —— 这些是本地 CosyVoice3 的参数，卸载后不再生效。<br><br>
+        <b style="color:#cfe3f5">保存后</b><br>
+        直接写进插件配置，下一句话就生效，不用重启。
+      </div>
+    </div>
+  </div>
+</main>
+<script>
+function _token() {
+  if (window.__DSH_TOKEN__) return window.__DSH_TOKEN__;
+  const direct = new URLSearchParams(location.search).get('token');
+  if (direct) return direct;
+  try {
+    const ref = new URLSearchParams((document.referrer.split('?')[1] || ''));
+    if (ref.get('token')) return ref.get('token');
+  } catch (e) {}
+  return localStorage.getItem('dash_token') || '';
+}
+const TOKEN = _token();
+if (TOKEN) localStorage.setItem('dash_token', TOKEN);
+let current = '';
+
+async function api(path, opts) {
+  const url = path + (path.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(TOKEN);
+  const r = await fetch(url, opts);
+  return r.json();
+}
+
+function play(name) {
+  const a = document.getElementById('audio');
+  a.src = '/api/tts/file?name=' + encodeURIComponent(name) + '&token=' + encodeURIComponent(TOKEN);
+  a.style.display = 'block';
+  a.play();
+}
+
+async function loadVoices() {
+  const d = await api('/api/tts/voices');
+  const cfg = await api('/api/tts/config');
+  current = cfg.qwen_voice || 'longhua_v2';
+  document.getElementById('speed').value = cfg.qwen_speed || 1;
+  document.getElementById('speedVal').textContent = (+(cfg.qwen_speed || 1)).toFixed(2);
+  document.getElementById('cur').textContent = '当前：' + (cfg.provider || '') + ' / ' + current;
+
+  document.getElementById('voices').innerHTML = d.voices.map(v => `
+    <div class="v ${v.id === current ? 'on' : ''}" data-id="${v.id}">
+      <b>${v.name}</b>
+      <span>${v.f0} Hz</span>
+      <button class="play" data-sample="${v.sample}">▶ 听原声</button>
+    </div>`).join('');
+
+  document.querySelectorAll('.v').forEach(el => {
+    el.onclick = (e) => {
+      if (e.target.classList.contains('play')) return;
+      current = el.dataset.id;
+      document.querySelectorAll('.v').forEach(x => x.classList.toggle('on', x === el));
+      document.getElementById('cur').textContent = '当前：' + current;
+    };
+    const btn = el.querySelector('.play');
+    if (btn) btn.onclick = (e) => { e.stopPropagation(); if (btn.dataset.sample) play('qwen/' + btn.dataset.sample); };
+  });
+}
+
+document.getElementById('speed').oninput = (e) => {
+  document.getElementById('speedVal').textContent = (+e.target.value).toFixed(2);
+};
+
+document.getElementById('try').onclick = async () => {
+  const btn = document.getElementById('try');
+  btn.disabled = true;
+  const stat = document.getElementById('stat');
+  const t0 = Date.now();
+  stat.textContent = '生成中… 0s';
+  const tick = setInterval(() => {
+    stat.textContent = `生成中… ${Math.round((Date.now() - t0) / 1000)}s（Qwen 约 3–5 秒，RVC 冷启动可能 10 秒）`;
+  }, 500);
+  try {
+    const d = await api('/api/tts/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: document.getElementById('text').value,
+        voice: current,
+        speed: +document.getElementById('speed').value,
+        rvc: document.getElementById('rvc').checked,
+      }),
+    });
+    clearInterval(tick);
+    if (d.error) { stat.textContent = '失败：' + d.error; return; }
+    stat.textContent = `Qwen ${d.ms_qwen} ms ／ RVC ${d.ms_rvc >= 0 ? d.ms_rvc + ' ms' : '跳过'} ／ 时长 ${d.sec}s ／ ${d.file}`;
+    play(d.file);
+  } catch (e) {
+    clearInterval(tick);
+    stat.textContent = '出错：' + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+document.getElementById('save').onclick = async () => {
+  const d = await api('/api/tts/save', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      provider: document.getElementById('rvc').checked ? 'qwen_rvc' : 'qwen',
+      qwen_voice: current,
+      qwen_speed: +document.getElementById('speed').value,
+    }),
+  });
+  const stat = document.getElementById('stat');
+  stat.textContent = d.ok ? '已保存：' + JSON.stringify(d.config) : '保存失败';
+  document.getElementById('cur').textContent = '当前：' + (d.config?.provider || '') + ' / ' + (d.config?.qwen_voice || '');
+};
+
+loadVoices();
+</script>
+</body>
+</html>

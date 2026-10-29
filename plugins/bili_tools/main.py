@@ -1,7 +1,7 @@
 """B 站浏览工具：搜索、视频详情、热门、排行、UP 主、推荐流、观看历史、我的账号。
 
 - 匿名可用：搜索 / 详情 / 热门 / 排行 / UP 主 / 推荐流
-- 需要登录：观看历史、我的账号（在 C:\\QQBot\\bili_account.json 里配 cookie）
+- 需要登录：观看历史、我的账号（在 D:\\QQrobot\\bili_account.json 里配 cookie）
 - 搜索和 WBI 接口需要 buvid3，启动后自动访问首页预热
 """
 
@@ -25,7 +25,7 @@ UA = (
 )
 TIMEOUT = 12
 BV_RE = re.compile(r"(BV[0-9A-Za-z]{10})")
-COOKIE_FILE = Path(r"C:\QQBot\bili_account.json")
+COOKIE_FILE = Path(r"D:\QQrobot\bili_account.json")
 
 # WBI 混淆表
 MIXIN_TAB = [

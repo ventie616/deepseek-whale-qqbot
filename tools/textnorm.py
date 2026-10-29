@@ -61,7 +61,7 @@ def fix_punct(text: str, split_long_lines: bool = True, end_punct: bool = False)
     # 0.1) 然后把 URL 挖出来保护起来，避免冒号/点被转成全角
     holders: list[tuple[str, str]] = []
 
-    # Windows 路径也保护（C:\QQBot\a.py 里的冒号和点不能动）
+    # Windows 路径也保护（D:\QQrobot\a.py 里的冒号和点不能动）
     for i, pth in enumerate(re.findall(r"[A-Za-z]:\\[^\s，。！？、；]*", s)):
         token = f"\x00PATH{i}\x00"
         holders.append((token, pth))

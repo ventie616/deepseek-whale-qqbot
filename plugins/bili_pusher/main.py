@@ -1,7 +1,7 @@
 """定时刷 B 站 → 挑到有意思的视频 → 在视频下发评论 @ 主人（失败回退到 QQ 私聊）。
 
-配置：C:\\QQBot\\bili_push.json
-状态：C:\\QQBot\\bili_push_state.json
+配置：D:\\QQrobot\\bili_push.json
+状态：D:\\QQrobot\\bili_push_state.json
 
 模式：
   "bili_comment"  只在视频下发评论（正文里写 @昵称）
@@ -31,7 +31,7 @@ from pathlib import Path
 import sys as _sys
 from pathlib import Path as _Path
 
-_sys.path.insert(0, str(_Path(r"C:\QQBot\tools")))
+_sys.path.insert(0, str(_Path(r"D:\QQrobot\tools")))
 try:
     from textnorm import fix_punct as _tn_fix  # noqa: E402
 except Exception:
@@ -60,19 +60,19 @@ def _extra(req, text: str) -> None:
     req.system_prompt += text
 from astrbot.core.message.message_event_result import MessageChain
 
-CONFIG_PATH = Path(r"C:\QQBot\bili_push.json")
-STATE_PATH = Path(r"C:\QQBot\bili_push_state.json")
-REPORT_DIR = Path(r"C:\QQBot\reports")
-ACTIVITY_PATH = Path(r"C:\QQBot\bili_activity.jsonl")
-TRIGGER_PATH = Path(r"C:\QQBot\bili_trigger.json")
-TRIGGER_RESULT = Path(r"C:\QQBot\bili_trigger_result.json")
-CHAT_ARCHIVE = Path(r"C:\QQBot\chat_archive")
-MEMORY_PATH = Path(r"C:\QQBot\bili_memory.json")
-WATCH_LOG = Path(r"C:\QQBot\bili_watched.jsonl")
-RECENT_PATH = Path(r"C:\QQBot\bili_recent.json")
+CONFIG_PATH = Path(r"D:\QQrobot\bili_push.json")
+STATE_PATH = Path(r"D:\QQrobot\bili_push_state.json")
+REPORT_DIR = Path(r"D:\QQrobot\reports")
+ACTIVITY_PATH = Path(r"D:\QQrobot\bili_activity.jsonl")
+TRIGGER_PATH = Path(r"D:\QQrobot\bili_trigger.json")
+TRIGGER_RESULT = Path(r"D:\QQrobot\bili_trigger_result.json")
+CHAT_ARCHIVE = Path(r"D:\QQrobot\chat_archive")
+MEMORY_PATH = Path(r"D:\QQrobot\bili_memory.json")
+WATCH_LOG = Path(r"D:\QQrobot\bili_watched.jsonl")
+RECENT_PATH = Path(r"D:\QQrobot\bili_recent.json")
 RECENT_TTL_HOURS = 6
-LEARNED_RULES = Path(r"C:\QQBot\learned_rules.json")
-COOKIE_FILE = Path(r"C:\QQBot\bili_account.json")
+LEARNED_RULES = Path(r"D:\QQrobot\learned_rules.json")
+COOKIE_FILE = Path(r"D:\QQrobot\bili_account.json")
 
 DEFAULTS = {
     "enabled": False,
@@ -83,8 +83,8 @@ DEFAULTS = {
     "bili_at_name": "",             # 昵称，必须和 B 站完全一致
     "bili_at_mid": "",              # UID（数字）
     # QQ 回退
-    "target_qq": "YOUR_QQ",
-    "target_name": "YOUR_BILI_NAME",
+    "target_qq": "3328480063",
+    "target_name": "四古清风",
     # 推到 QQ 时发几层：1=视频信息，2=+为什么值得看，3=+评论，4=+链接
     "qq_layers": 2,
     # 推 QQ 时合并成一条消息（true = 每层单独发一条）
@@ -304,7 +304,7 @@ class Main(star.Star):
     def _notify_gen_fail(self, reason: str) -> None:
         """生成失败时提醒一次（每天最多一次），避免刷屏。"""
         try:
-            state_path = Path(r"C:\QQBot\bili_gen_fail.json")
+            state_path = Path(r"D:\QQrobot\bili_gen_fail.json")
             today = datetime.now().strftime("%Y-%m-%d")
             try:
                 st = json.loads(state_path.read_text(encoding="utf-8"))
@@ -1277,7 +1277,7 @@ class Main(star.Star):
 
     def _merge_glossary(self, items: list[dict], video: dict) -> None:
         """把新梗并进 anime_kb/glossary.json（已有的不覆盖）。"""
-        path = Path(r"C:\QQBot\anime_kb\glossary.json")
+        path = Path(r"D:\QQrobot\anime_kb\glossary.json")
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             if not isinstance(data, list):

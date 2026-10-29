@@ -1,12 +1,12 @@
 @echo off
 setlocal enabledelayedexpansion
 title QQBot Stopper
-cd /d C:\QQBot
+cd /d D:\QQrobot
 echo Stopping QQBot ...
 echo.
 rem 1) pause the watchdog first, otherwise it will restart AstrBot in ~60s
-if not exist "C:\QQBot\watchdog_pause" (
-  type nul > "C:\QQBot\watchdog_pause"
+if not exist "D:\QQrobot\watchdog_pause" (
+  type nul > "D:\QQrobot\watchdog_pause"
   echo   [1/2] watchdog paused  ^(created watchdog_pause^)
 ) else (
   echo   [1/2] watchdog already paused

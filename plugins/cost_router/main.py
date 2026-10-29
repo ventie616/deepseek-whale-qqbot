@@ -9,11 +9,23 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 import re
 
 from astrbot.api import logger, star
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.core.agent.tool import ToolSet
+
+CFG_PATH = Path(r"D:\\QQrobot\\cost_router.json")
+
+
+def _cfg():
+    try:
+        return json.loads(CFG_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
 
 FLASH_MODEL = "deepseek-flash"
 PRO_MODEL = None          # None = 用配置里的默认（v4-pro）
@@ -38,6 +50,7 @@ TOOL_TRIGGERS: dict[str, tuple[str, ...]] = {
     "timeline": ("时间线", "今天干", "上午", "下午都", "昨晚"),
     "browse_history": ("浏览记录",),
     "group_recap": ("群里", "大家", "总结"),
+    "web_": ("搜", "查一下", "查查", "查查资料", "帮我查", "新闻", "最新", "官网", "网址", "链接", "是什么", "谁是", "怎么样", "为什么", "多少", "哪年", "什么时候", "百科", "资料", "了解", "介绍", "出处", "来源"),
 }
 
 CORE_KEEP = {"search_chat", "who_is", "remember_member"}
@@ -52,10 +65,24 @@ class Main(star.Star):
         super().__init__(context)
         self._last_model = None
 
+    @filter.on_waiting_llm_request()
+    async def force_provider(self, event) -> None:
+        """force_flash 时，在选模型之前就把 provider 换掉。"""
+        if _cfg().get("force_flash"):
+            event.set_extra("selected_provider", "deepseek/deepseek-flash")
+
     @filter.on_llm_request()
     async def route(self, event: AstrMessageEvent, req) -> None:
         text = str(getattr(req, "prompt", "") or "").strip()
         has_media = bool(getattr(req, "image_urls", None)) or bool(getattr(req, "audio_urls", None))
+
+        # 0) 全部走 flash（试线路用）
+        if _cfg().get("force_flash"):
+            req.model = FLASH_MODEL
+            if self._last_model != "flash-forced":
+                logger.info(f"[cost] 强制 flash（{len(text)} 字）")
+                self._last_model = "flash-forced"
+            return
 
         # 1) 简单闲聊 -> flash，且不需要工具
         simple = (
