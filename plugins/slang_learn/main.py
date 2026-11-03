@@ -20,6 +20,20 @@ from pathlib import Path
 import httpx
 from astrbot.api import logger, star
 from astrbot.api.event import AstrMessageEvent, filter
+import sys as _sys
+from pathlib import Path as _Path
+# offpeak 在仓库 tools/ 下；插件目录向上找到项目根
+for _cand in (_Path(__file__).resolve().parents[3] / "tools",
+              _Path(__file__).resolve().parents[2] / "tools",
+              _Path(r"D:\\QQrobot") / "tools"):
+    if (_cand / "offpeak.py").exists():
+        _sys.path.insert(0, str(_cand))
+        break
+try:
+    from offpeak import is_offpeak as _is_offpeak
+except Exception:  # 没配工具目录时不做限制
+    def _is_offpeak(now=None):
+        return True, "未配置"
 
 ROOT = Path(r"D:\QQrobot")
 STORE = ROOT / "slang.json"
@@ -259,6 +273,14 @@ class SlangLearn(star.Star):
         await asyncio.sleep(120)
         while True:
             cfg = self._cfg()
+            try:
+                ok, why = _is_offpeak()
+                if not ok:
+                    logger.info(f"[slang] 跳过（{why}）")
+                    await asyncio.sleep(1800)
+                    continue
+            except Exception:
+                pass
             await asyncio.sleep(max(1.0, float(cfg.get("interval_hours", 12))) * 3600)
             try:
                 ok, why = await self._learn_once()

@@ -1,0 +1,10 @@
+name: astrbot_plugin_dfy_mood
+display_name: 大肥鱼心情
+short_desc: 给养着的 AI 加一颗会吃醋的心
+desc: 量化机器人的心情与关系度，并让回复的语气随心情变化；提到别的 AI 时会吃醋。
+author: lovernick
+version: v0.2.0
+repo: "https://github.com/lovernick/astrbot_plugin_dfy_mood"
+astrbot_version: ">=4.29,<5"
+support_platforms:
+  - aiocqhttp

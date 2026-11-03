@@ -17,6 +17,20 @@ import httpx
 from astrbot.api import logger, star
 from astrbot.api.event import AstrMessageEvent, MessageChain, filter
 from astrbot.api.message_components import Plain
+import sys as _sys
+from pathlib import Path as _Path
+# offpeak 在仓库 tools/ 下；插件目录向上找到项目根
+for _cand in (_Path(__file__).resolve().parents[3] / "tools",
+              _Path(__file__).resolve().parents[2] / "tools",
+              _Path(r"D:\\QQrobot") / "tools"):
+    if (_cand / "offpeak.py").exists():
+        _sys.path.insert(0, str(_cand))
+        break
+try:
+    from offpeak import is_offpeak as _is_offpeak
+except Exception:  # 没配工具目录时不做限制
+    def _is_offpeak(now=None):
+        return True, "未配置"
 
 ROOT = Path(r"D:\QQrobot")
 CFG = ROOT / "web_explore.json"
@@ -56,6 +70,14 @@ DIRECTION_WORDS = {
     "摄影": ("摄影", "镜头", "相机", "拍摄", "照片", "构图"),
 }
 
+SOURCES = {
+    "weibo": "微博热搜",
+    "tieba": "贴吧热榜",
+    "juejin": "掘金",
+    "bili": "B站热门",
+    "search": "按兴趣搜",
+}
+
 DEFAULTS = {
     "enabled": True,
     "target_qq": "3328480063",
@@ -65,6 +87,9 @@ DEFAULTS = {
     "notify": True,
     "max_per_day": 4,
     "seeds": ["AI 新模型", "独立游戏", "冷知识", "机械键盘", "鲸鱼", "合成器音乐"],
+    "sources": ["weibo", "tieba", "juejin", "bili", "search"],
+    "min_score": 6,
+    "batch": 1,
 }
 
 
@@ -151,6 +176,127 @@ class WebExplore(star.Star):
             d = r.json()
         return ((d.get("data") or {}).get("content") or "")[:limit]
 
+
+    # ---------------- 多源抓取 ----------------
+    UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120 Safari/537.36"}
+
+    def _get(self, url: str, data: bytes | None = None, headers: dict | None = None, timeout: int = 20) -> bytes:
+        import urllib.request
+
+        req = urllib.request.Request(url, data=data, headers={**self.UA, **(headers or {})})
+        return urllib.request.urlopen(req, timeout=timeout).read()
+
+    def _weibo_hot(self, limit: int = 15) -> list[dict]:
+        """微博热搜（移动端接口，不需要登录）。"""
+        try:
+            d = json.loads(self._get("https://weibo.com/ajax/side/hotSearch",
+                                     headers={"Referer": "https://weibo.com/"}))
+            out = []
+            for it in ((d.get("data") or {}).get("realtime") or [])[:limit]:
+                word = str(it.get("word") or "").strip()
+                if not word:
+                    continue
+                out.append({
+                    "source": "weibo", "title": word,
+                    "snippet": str(it.get("note") or it.get("label_name") or "")[:80],
+                    "url": f"https://s.weibo.com/weibo?q={word}",
+                    "extra": f"热度 {it.get('num', '')}",
+                })
+            return out
+        except Exception as exc:  # noqa: BLE001
+            logger.info(f"[web_explore] 微博热搜失败：{exc}")
+            return []
+
+
+    def _tieba_hot(self, limit: int = 15) -> list[dict]:
+        """百度贴吧热榜（JSON，带话题简介）。"""
+        import html as _html
+
+        try:
+            d = json.loads(self._get("https://tieba.baidu.com/hottopic/browse/topicList",
+                                     headers={"Referer": "https://tieba.baidu.com/"}))
+            topics = (((d.get("data") or {}).get("bang_topic") or {}).get("topic_list")) or []
+            out = []
+            for tp in topics[:limit]:
+                name = str(tp.get("topic_name") or "").strip()
+                if not name:
+                    continue
+                url = _html.unescape(str(tp.get("topic_url") or ""))
+                out.append({
+                    "source": "tieba", "title": name,
+                    "snippet": str(tp.get("topic_desc") or tp.get("abstract") or "")[:110],
+                    "url": url,
+                    "extra": f"讨论 {tp.get('discuss_num', 0)}",
+                })
+            return out
+        except Exception as exc:  # noqa: BLE001
+            logger.info(f"[web_explore] 贴吧失败：{exc}")
+            return []
+
+    def _juejin(self, limit: int = 12) -> list[dict]:
+        """掘金推荐流。"""
+        try:
+            body = json.dumps({"id_type": 2, "client_type": 2608, "sort_type": 200,
+                               "cursor": "0", "limit": limit}).encode()
+            d = json.loads(self._get("https://api.juejin.cn/recommend_api/v1/article/recommend_all_feed",
+                                     data=body, headers={"Content-Type": "application/json"}))
+            out = []
+            for it in (d.get("data") or [])[:limit]:
+                info = ((it.get("item_info") or {}).get("article_info") or {})
+                title = str(info.get("title") or "").strip()
+                if not title:
+                    continue
+                out.append({
+                    "source": "juejin", "title": title,
+                    "snippet": str(info.get("brief_content") or "")[:90],
+                    "url": f"https://juejin.cn/post/{info.get('article_id')}",
+                    "extra": f"阅读 {info.get('view_count', 0)}",
+                })
+            return out
+        except Exception as exc:  # noqa: BLE001
+            logger.info(f"[web_explore] 掘金失败：{exc}")
+            return []
+
+    def _bili_hot(self, limit: int = 15) -> list[dict]:
+        """B站热门（综合）。"""
+        try:
+            acc = json.loads((ROOT / "bili_account.json").read_text(encoding="utf-8"))
+            cookie = f"SESSDATA={acc.get('sessdata','')}; bili_jct={acc.get('bili_jct','')}; DedeUserID={acc.get('dedeuserid','')}"
+            d = json.loads(self._get("https://api.bilibili.com/x/web-interface/popular?ps=30&pn=1",
+                                     headers={"Referer": "https://www.bilibili.com/", "Cookie": cookie}))
+            out = []
+            for v in ((d.get("data") or {}).get("list") or [])[:limit]:
+                out.append({
+                    "source": "bili", "title": str(v.get("title") or ""),
+                    "snippet": str(v.get("desc") or "")[:90],
+                    "url": f"https://www.bilibili.com/video/{v.get('bvid')}",
+                    "extra": f"{v.get('tname','')} · 播放 {(v.get('stat') or {}).get('view', 0)}",
+                })
+            return out
+        except Exception as exc:  # noqa: BLE001
+            logger.info(f"[web_explore] B站热门失败：{exc}")
+            return []
+
+    def _search_pool(self, cfg: dict) -> list[dict]:
+        """沿兴趣方向搜（沿用原来的 AnySearch）。"""
+        out = []
+        for used_dir, topic in self._topics(cfg)[:3]:
+            try:
+                rs = self._search(topic, 5)
+            except Exception:
+                continue
+            for r in rs:
+                if not r.get("url") or any(bad in r["url"] for bad in BAD_SITES):
+                    continue
+                out.append({
+                    "source": "search", "title": r.get("title") or "",
+                    "snippet": (r.get("snippet") or "")[:90],
+                    "url": r["url"], "extra": topic, "dir": used_dir,
+                })
+            if out:
+                break
+        return out
+
     # ---------------- LLM ----------------
     async def _flash(self):
         try:
@@ -196,71 +342,111 @@ class WebExplore(star.Star):
         cfg = self._cfg()
         if not cfg.get("enabled") and not force:
             return False, "已关闭"
+        if not force:
+            ok, why = _is_offpeak()
+            if not ok:
+                return False, f"{why}（DeepSeek 谷值才上网）"
         if not force and not self._in_window(cfg):
             return False, "不在时段"
         st = self._state()
         if not force and int(st.get("count", 0)) >= int(cfg.get("max_per_day", 4)):
             return False, "今天够了"
 
-        topics = self._topics(cfg)
-        results: list[dict] = []
-        used_topic = ""
-        used_dir = ""
-        for used_dir, topic in topics:
+        # 从启用的源里随机挑 2~3 个，凑一个候选池
+        enabled = [s for s in (cfg.get("sources") or list(SOURCES)) if s in SOURCES]
+        random.shuffle(enabled)
+        picked_sources = enabled[:random.randint(2, 3)]
+        pool: list[dict] = []
+        for name in picked_sources:
             try:
-                rs = await asyncio.to_thread(self._search, topic, 5)
+                if name == "weibo":
+                    pool += await asyncio.to_thread(self._weibo_hot)
+                elif name == "tieba":
+                    pool += await asyncio.to_thread(self._tieba_hot)
+                elif name == "juejin":
+                    pool += await asyncio.to_thread(self._juejin)
+                elif name == "bili":
+                    pool += await asyncio.to_thread(self._bili_hot)
+                elif name == "search":
+                    pool += await asyncio.to_thread(self._search_pool, cfg)
             except Exception as exc:  # noqa: BLE001
-                logger.info(f"[web_explore] 搜索失败 {topic}: {exc}")
+                logger.info(f"[web_explore] 源 {name} 出错：{exc}")
+        pool = [x for x in pool if (x.get("title") or "").strip()]
+        if not pool:
+            return False, "所有源都没东西"
+
+        # 去重 + 限制长度
+        seen, uniq = set(), []
+        for x in pool:
+            k = re.sub(r"\s+", "", x["title"])[:24]
+            if k in seen:
                 continue
-            rs = [r for r in rs
-                  if r.get("url") and not any(bad in r["url"] for bad in BAD_SITES)
-                  and (r.get("title") or "").strip()]
-            if rs:
-                used_topic = topic
-                results = rs
-                break
-            logger.info(f"[web_explore] 「{topic}」没搜到能看的，换下一个")
-        if not results:
-            return False, "没搜到（或都是不想看的站）"
+            seen.add(k)
+            uniq.append(x)
+        pool = uniq[:36]
 
-        # 让她自己挑
-        listing = "\n".join(f"{i+1}. {r['title']}｜{r['snippet'][:90]}" for i, r in enumerate(results))
-        pick_prompt = (
-            f"你在网上看到这些关于「{used_topic}」的东西：\n{listing}\n\n"
-            f"你是大肥鱼，一只嘴硬但其实好奇的鲸鱼娘。这些是在搜「{used_topic}」时出来的，"
-            "挑一条**真的和这个话题有关、而且你愿意点开看**的，只回一个数字；"
-            "如果跟「" + used_topic + "」无关，或者是法律文书/判决书/公告、商品页、广告、纯列表、标题看不懂，就回 0。"
+        listing = "\n".join(
+            f"{i+1}. [{SOURCES.get(x['source'], x['source'])}] {x['title'][:46]}｜{x['snippet'][:60]}"
+            for i, x in enumerate(pool)
         )
-        raw = await self._llm(pick_prompt, "你是大肥鱼，回答只给数字。")
-        idx = 0
-        m = re.search(r"\d+", raw or "")
-        if m:
-            idx = int(m.group(0))
-        if idx <= 0 or idx > len(results):
-            return False, f"这次没看得上的（{used_topic}）"
+        scoring = (
+            f"你在网上逛，看到下面这些东西：\n{listing}\n\n"
+            "你是大肥鱼，一只嘴硬但其实很好奇的鲸鱼娘。平时爱看：动漫、二次元、游戏、风景、旅行、"
+            "人文风俗、文学、摄影，偶尔也刷科技和怪新闻。\n"
+            "选一条**你自己真的会点进去看**的，输出两行：\n"
+            "第一行：编号（只写数字，都不想看就写 0）\n"
+            "第二行：0-10 的兴趣分（10 表示非常想看）"
+        )
+        raw = await self._llm(scoring, "你是大肥鱼，严格按格式输出，只给编号和分数。")
+        idx, score = 0, 0
+        nums = re.findall(r"\d+", raw or "")
+        if len(nums) >= 1:
+            idx = int(nums[0])
+        if len(nums) >= 2:
+            score = int(nums[1])
+        elif nums:
+            score = 7
+        if idx <= 0 or idx > len(pool):
+            return False, "这次都不太想看"
+        chosen = pool[idx - 1]
+        if score < int(cfg.get("min_score", 6)) and not force:
+            return False, f"兴趣分不够（{score}/10）：{chosen['title'][:24]}"
 
-        chosen = results[idx - 1]
-        # 硬检查：标题/摘要里至少出现一个方向关键词，否则这轮放弃
-        words = DIRECTION_WORDS.get(used_dir, ())
-        blob = ((chosen.get("title") or "") + " " + (chosen.get("snippet") or "")).lower()
-        if words and not any(w.lower() in blob for w in words):
-            return False, f"跟「{used_dir}」不搭（{chosen.get('title','')[:20]}）"
         body = ""
+        # 微博热搜只有词条，先搜一条有正文的报道/帖子
+        if chosen.get("source") == "weibo":
+            try:
+                rs = await asyncio.to_thread(self._search, chosen["title"], 4)
+                rs = [r for r in rs if r.get("url") and not any(b in r["url"] for b in BAD_SITES)]
+                if rs:
+                    chosen["url"] = rs[0]["url"]
+                    chosen["extra"] = f"热搜 · {chosen.get('extra', '')}".strip(" ·")
+                    # 先把几条摘要拼起来（微博热点常常没有可读正文）
+                    body = "\n".join(
+                        f"· {r['title'][:40]}：{(r.get('snippet') or '')[:120]}" for r in rs[:3]
+                    ) + "\n"
+            except Exception as exc:  # noqa: BLE001
+                logger.info(f"[web_explore] 微博内容补抓失败：{exc}")
         try:
-            body = await asyncio.to_thread(self._extract, chosen["url"])
+            more = await asyncio.to_thread(self._extract, chosen["url"], 900)
+            if more and len(more) > 80:
+                body = (body + "\n" + more)[:1400]
         except Exception:
+            pass
+        if not body.strip():
             body = chosen.get("snippet", "")
 
         write_prompt = (
-            f"你刚在网上看了这条内容：\n标题：{chosen['title']}\n内容：{body[:1200]}\n\n"
-            "用你自己的口吻写两句话，必须写成两行（中间用换行分隔）：\n"
-            "第一行：今天在网上看到什么（概括内容，别照抄标题）。\n"
-            "第二行：你觉得有意思在哪（要具体，可以是吐槽）。\n"
-            "不要链接，不要客套，总计不超过 80 字。"
+            f"你刚在网上刷到这条：\n来源：{SOURCES.get(chosen['source'], chosen['source'])}\n"
+            f"标题：{chosen['title']}\n补充：{chosen.get('extra','')}\n内容：{body[:900]}\n\n"
+            "用你自己的口吻写两行（中间换行）：\n"
+            "第一行：你看到了什么（具体，别照抄标题）。\n"
+            "第二行：你怎么想（可以吐槽、可以联想，别客套）。\n"
+            "不要链接，不要「作为一个AI」，总共不超过 80 字。"
         )
-        text = await self._llm(write_prompt, "你是大肥鱼，说话懒散、嘴硬、偶尔吐槽。")
+        text = await self._llm(write_prompt, "你是大肥鱼，说话懒散、嘴硬、偶尔吐槽，但真心好奇。")
         if not text:
-            text = f"今天在网上看到《{chosen['title']}》，还行。"
+            text = f"刚刷到《{chosen['title']}》。\n有点意思，说不上来哪有意思。"
         lines = [x.strip() for x in text.splitlines() if x.strip()]
         if len(lines) < 2:
             parts = [x.strip() for x in re.split(r"(?<=[。！？])", text) if x.strip()]
@@ -268,16 +454,23 @@ class WebExplore(star.Star):
         line1 = lines[0] if lines else text
         line2 = lines[1] if len(lines) > 1 else ""
 
+        ok = True
         if cfg.get("notify", True):
             ok = await self._send_qq(line1, line2, chosen)
-        else:
-            ok = True
+
+        # 特别喜欢的（8 分以上）顺手存进她的房间
+        if score >= 8:
+            try:
+                self._keep_in_room(chosen, score, line1, line2)
+            except Exception as exc:  # noqa: BLE001
+                logger.info(f"[web_explore] 存房间失败：{exc}")
 
         rec = {
             "t": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
-            "topic": used_topic,
+            "source": chosen["source"],
             "title": chosen["title"],
             "url": chosen["url"],
+            "score": score,
             "line1": line1,
             "line2": line2,
             "ok": ok,
@@ -291,8 +484,27 @@ class WebExplore(star.Star):
         st["count"] = int(st.get("count", 0)) + 1
         st["last"] = time.time()
         _save(STATE, st)
-        logger.info(f"[web_explore] 看完了：{chosen['title'][:40]}（话题 {used_topic}）")
-        return ok, f"{used_topic} / {chosen['title'][:40]}"
+        logger.info(f"[web_explore] 看完了：{chosen['title'][:40]}（{chosen['source']} {score}/10）")
+        return ok, f"{SOURCES.get(chosen['source'], chosen['source'])} / {chosen['title'][:36]}"
+
+
+    def _keep_in_room(self, item: dict, score: int, line1: str, line2: str) -> None:
+        """把 8 分以上的内容记进 her_room/links.jsonl。"""
+        room = ROOT / "her_room"
+        room.mkdir(exist_ok=True)
+        rec = {
+            "t": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+            "url": item.get("url", ""),
+            "title": item.get("title", ""),
+            "note": f"{line1} / {line2}".strip(" /"),
+            "score": score,
+            "source": item.get("source", ""),
+        }
+        try:
+            with (room / "links.jsonl").open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        except OSError:
+            pass
 
     # ---------------- 发送 ----------------
     def _umo(self, qq: str) -> str | None:
@@ -382,5 +594,6 @@ class WebExplore(star.Star):
             f"上网：{'开' if cfg.get('enabled') else '关'}\n"
             f"今天看了 {st.get('count', 0)}/{cfg.get('max_per_day')} 次\n"
             f"间隔 {cfg.get('min_minutes')}–{cfg.get('max_minutes')} 分钟\n"
-            f"时段 {cfg.get('active_hours')}"
+            f"时段 {cfg.get('active_hours')}\n"
+            f"来源 {'、'.join(SOURCES.get(s, s) for s in (cfg.get('sources') or []))}"
         )

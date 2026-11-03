@@ -14,6 +14,7 @@ import json
 import random
 import re
 import subprocess
+import time
 import urllib.parse
 import urllib.request
 from datetime import datetime
@@ -26,31 +27,25 @@ from astrbot.api.event import AstrMessageEvent, MessageChain, filter
 from astrbot.core.star.filter.command import GreedyStr
 
 ROOT = Path(r"D:\QQrobot")
-
-TOKEN_FILE = ROOT / "secrets" / "onebot_token.txt"
-
-
-def _onebot_token() -> str:
-    """OneBot 访问 token：优先读 secrets/onebot_token.txt，其次环境变量 ONEBOT_TOKEN。"""
-    import os
-
-    try:
-        return TOKEN_FILE.read_text(encoding="utf-8").strip()
-    except OSError:
-        return os.environ.get("ONEBOT_TOKEN", "").strip()
-
 CLIPS = ROOT / "voice_clips"
 OUT = ROOT / "voice_out"
+COVERS = ROOT / "covers"   # 翻唱成品单独放
 CFG = ROOT / "cover_sing.json"
 LOG = ROOT / "cover_sing.jsonl"
 STATE = ROOT / "cover_state.json"
 COOKIE_FILE = ROOT / "secrets" / "kugou_cookie.txt"
+BILI_COOKIES = ROOT / "secrets" / "bili_cookies.txt"
+PY = r"D:\QQrobot\venv\Scripts\python.exe"
+FFMPEG = r"C:\Users\venti\miniforge3\Library\bin\ffmpeg.EXE"
 WSL_DISTRO = "Ubuntu-22.04"
 WSL_PY = "/root/.local/share/feiyu-voice/cuda/rvc/venv/bin/python"
 ONEBOX = "http://127.0.0.1:3000"
 TOKEN = ""
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120 Safari/537.36",
       "Referer": "https://www.kugou.com/"}
+# B站 必须用 bilibili 的 Referer，否则 playurl 直接 403
+BILI_UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120 Safari/537.36",
+           "Referer": "https://www.bilibili.com/"}
 
 DEFAULT = {
     "enabled": True,
@@ -58,7 +53,9 @@ DEFAULT = {
     "active_hours": [11, 23],
     "notify_qq": 3328480063,
     "online_search": True,
+    "bili_require_hires": True,
     "max_duration": 420,
+    "bili_allow_188k": False,
 }
 
 
@@ -184,6 +181,149 @@ class CoverSing(star.Star):
         return {"file": f"full/{stem}.mp3", "song": name,
                 "title": f"{cand['song']} - {cand['singer']}", "duration": cand.get("duration", 0)}
 
+
+    # ---------------- B站（只要杜比 / Hi-Res 高品质音频） ----------------
+    BAD_TITLE = ("mv", "官方", "自制", "音乐视频", "现场", "live", "伴奏", "纯音乐",
+                 "dj", "片段", "合集", "翻唱", "cover", "remix", "反应", "reaction")
+
+
+    def _bili_json(self, url: str, timeout: float = 25):
+        """带重试的 B站 JSON 请求（403/412 时退避重试）。"""
+        import time as _time
+
+        last = None
+        for attempt in range(3):
+            try:
+                raw = urllib.request.urlopen(
+                    urllib.request.Request(url, headers={**BILI_UA, "Cookie": self._bili_cookie()}),
+                    timeout=timeout).read()
+                return json.loads(raw)
+            except Exception as exc:  # noqa: BLE001
+                last = exc
+                _time.sleep(1.2 * (attempt + 1))
+        raise last  # type: ignore[misc]
+
+    def _bili_view(self, aid_or_bvid: str) -> dict:
+        url = ("https://api.bilibili.com/x/web-interface/view?" +
+               (f"bvid={aid_or_bvid}" if str(aid_or_bvid).startswith("BV")
+                else f"aid={aid_or_bvid}"))
+        return (self._bili_json(url, timeout=20) or {}).get("data") or {}
+
+    def _bili_cookie(self) -> str:
+        try:
+            acc = json.loads((ROOT / "bili_account.json").read_text(encoding="utf-8"))
+            return (f"SESSDATA={acc.get('sessdata','')}; bili_jct={acc.get('bili_jct','')}; "
+                    f"DedeUserID={acc.get('dedeuserid','')}")
+        except Exception:
+            return ""
+
+    def _bili_audio_streams(self, bvid: str, cid: int) -> dict:
+        """查这个视频有哪些音频流：hires(flac) / dolby / 188k。"""
+        url = (f"https://api.bilibili.com/x/player/playurl?bvid={bvid}&cid={cid}"
+               "&fnval=4048&fourk=1")
+        dash = (((self._bili_json(url, timeout=25) or {}).get("data") or {}).get("dash") or {})
+        flac = ((dash.get("flac") or {}).get("audio") or [])
+        dolby = ((dash.get("dolby") or {}).get("audio") or [])
+        normal = sorted((a.get("id"), a.get("baseUrl") or a.get("base_url"))
+                        for a in (dash.get("audio") or []))
+        best_normal = normal[-1] if normal else (None, None)
+        return {
+            "hires_url": flac[0].get("baseUrl") or flac[0].get("base_url") if flac else None,
+            "dolby_url": dolby[0].get("baseUrl") or dolby[0].get("base_url") if dolby else None,
+            "normal_id": best_normal[0],
+            "normal_url": best_normal[1],
+        }
+
+    def _bili_search(self, name: str) -> list[dict]:
+        """B站搜歌，只留杜比 / Hi-Res 的（非大会员会返回空并说明）。"""
+        cfg = _cfg()
+        require = bool(cfg.get("bili_require_hires", True))
+        allow_188 = bool(cfg.get("bili_allow_188k", False))
+        queries = [f"{name} Hi-Res", f"{name} 无损", name]
+        seen, cands = set(), []
+        for q in queries:
+            try:
+                r = subprocess.run(
+                    [PY, "-m", "yt_dlp", f"bilisearch6:{q}", "--flat-playlist",
+                     "--cookies", str(BILI_COOKIES), "--print", "%(id)s", "--no-warnings"],
+                    capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=180,
+                )
+                ids = [x.strip() for x in (r.stdout or "").splitlines() if x.strip()]
+            except Exception as exc:  # noqa: BLE001
+                logger.info(f"[cover] B站搜索失败：{exc}")
+                continue
+            for item in ids:
+                if item in seen:
+                    continue
+                seen.add(item)
+                time.sleep(0.25)
+                try:
+                    v = self._bili_view(item)
+                    title = str(v.get("title") or "")
+                    dur = int(v.get("duration") or 0)
+                    bvid = v.get("bvid")
+                    if not bvid or dur < 45 or dur > int(cfg.get("max_duration", 420)):
+                        continue
+                    low = title.lower()
+                    if any(b in low for b in self.BAD_TITLE):
+                        continue
+                    if _norm(name) not in _norm(title):
+                        continue
+                    cid = (v.get("pages") or [{}])[0].get("cid")
+                    st = self._bili_audio_streams(bvid, cid)
+                    has_hi = bool(st["hires_url"] or st["dolby_url"])
+                    if require and not has_hi and not allow_188:
+                        continue
+                    cands.append({"bvid": bvid, "title": title, "duration": dur,
+                                  "hires": st["hires_url"], "dolby": st["dolby_url"],
+                                  "normal": st["normal_url"], "normal_id": st["normal_id"]})
+                except Exception:
+                    continue
+            if cands:
+                break
+        cands.sort(key=lambda x: 0 if (x["hires"] or x["dolby"]) else 1)
+        return cands
+
+    def _bili_fetch(self, cand: dict, name: str) -> dict:
+        """下载选中的音频流（杜比/Hi-Res 优先），转 320k mp3，登记曲库。"""
+        url = cand.get("hires") or cand.get("dolby") or cand.get("normal")
+        if not url:
+            raise RuntimeError("这个视频没有可用音频流")
+        kind = "hires" if cand.get("hires") else ("dolby" if cand.get("dolby") else "normal")
+        tmp = OUT / "covers_src"
+        tmp.mkdir(parents=True, exist_ok=True)
+        raw = tmp / f"bili_{cand['bvid']}.src"
+        import httpx
+
+        with httpx.Client(timeout=180, follow_redirects=True) as c:
+            r = c.get(url, headers={**BILI_UA, "Cookie": self._bili_cookie()})
+            r.raise_for_status()
+            raw.write_bytes(r.content)
+
+        stem = f"bili_{cand['bvid']}"
+        dest = CLIPS / "full" / f"{stem}.mp3"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run([FFMPEG, "-y", "-v", "error", "-i", str(raw), "-b:a", "320k", str(dest)],
+                       capture_output=True, timeout=600)
+        if not dest.exists():
+            raise RuntimeError("B站音频转 mp3 失败")
+
+        idx_path = CLIPS / "index.json"
+        try:
+            idx = json.loads(idx_path.read_text(encoding="utf-8"))
+            if not any(f.get("file") == f"full/{stem}.mp3" for f in idx.get("fulls", [])):
+                idx.setdefault("fulls", []).append({
+                    "id": f"full_{stem}", "type": "full", "file": f"full/{stem}.mp3",
+                    "song": name, "bvid": cand["bvid"], "title": cand["title"],
+                    "up": "", "duration": cand.get("duration", 0),
+                    "source": f"bilibili-{kind}",
+                })
+                idx_path.write_text(json.dumps(idx, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception as exc:  # noqa: BLE001
+            logger.info(f"[cover] 登记失败：{exc}")
+        return {"file": f"full/{stem}.mp3", "song": name, "title": cand["title"],
+                "duration": cand.get("duration", 0)}
+
     # ---------------- 选歌 ----------------
     def _pick(self, key: str = "") -> dict | None:
         songs = _songs()
@@ -222,14 +362,21 @@ class CoverSing(star.Star):
         if not wav.exists():
             tail = ((proc.stdout or "") + (proc.stderr or "")).strip().splitlines()[-3:]
             raise RuntimeError("生成失败：" + " / ".join(tail)[:300])
-        mp3out = wav.with_suffix(".mp3")
+        COVERS.mkdir(parents=True, exist_ok=True)
+        mp3out = COVERS / f"cover_{mp3.stem}.mp3"
         subprocess.run(
             ["wsl", "-d", WSL_DISTRO, "--", "bash", "-lc",
              f"ffmpeg -y -v error -i '/mnt/d/QQrobot/voice_out/{wav.name}' "
-             f"-b:a 128k '/mnt/d/QQrobot/voice_out/{mp3out.name}'"],
+             f"-b:a 192k '/mnt/d/QQrobot/covers/{mp3out.name}'"],
             capture_output=True, timeout=600,
         )
-        return mp3out if mp3out.exists() else wav
+        if mp3out.exists():
+            try:
+                wav.unlink()
+            except OSError:
+                pass
+            return mp3out
+        return wav
 
     def _log(self, rec: dict) -> None:
         try:
@@ -316,20 +463,37 @@ class CoverSing(star.Star):
         key = _clean_query(raw)
         song = self._pick(key)
         if song is None and key and _cfg().get("online_search", True):
-            yield event.plain_result(f"曲库里没有《{key}》，我去酷狗找找…")
+            # 先 B站（188k，音质更好）
+            yield event.plain_result(f"曲库里没有《{key}》，去 B站 找…")
             try:
-                cands = await asyncio.to_thread(self._kugou_search, key)
+                bcands = await asyncio.to_thread(self._bili_search, key)
             except Exception as exc:  # noqa: BLE001
-                cands = []
-                logger.info(f"[cover] 搜索异常：{exc}")
-            if cands:
-                yield event.plain_result(f"找到：{cands[0]['song']} - {cands[0]['singer']}，下载中…")
+                bcands = []
+                logger.info(f"[cover] B站搜索异常：{exc}")
+            if bcands:
+                yield event.plain_result(f"B站找到：{bcands[0]['title'][:40]}，下载中…")
                 try:
-                    song = await asyncio.to_thread(self._kugou_fetch, cands[0], key)
+                    song = await asyncio.to_thread(self._bili_fetch, bcands[0], key)
                 except Exception as exc:  # noqa: BLE001
-                    yield event.plain_result(f"没下来：{exc}")
-            else:
-                yield event.plain_result(f"酷狗上也搜不到《{key}》，曲库现有：{self._menu()}")
+                    yield event.plain_result(f"B站没下来（{exc}），去酷狗再试…")
+
+            # B站 没有 → 酷狗 兜底
+            if song is None:
+                yield event.plain_result("去酷狗找…")
+                try:
+                    cands = await asyncio.to_thread(self._kugou_search, key)
+                except Exception as exc:  # noqa: BLE001
+                    cands = []
+                    logger.info(f"[cover] 酷狗搜索异常：{exc}")
+                if cands:
+                    yield event.plain_result(f"酷狗找到：{cands[0]['song']} - {cands[0]['singer']}，下载中…")
+                    try:
+                        song = await asyncio.to_thread(self._kugou_fetch, cands[0], key)
+                    except Exception as exc:  # noqa: BLE001
+                        yield event.plain_result(f"酷狗也没下来：{exc}")
+
+            if song is None:
+                yield event.plain_result(f"B站和酷狗都没找到《{key}》。\n曲库现有：{self._menu()}")
 
         if song is None:
             return
@@ -358,9 +522,13 @@ class CoverSing(star.Star):
             key = _clean_query(which)
             song = self._pick(key)
             if song is None and key and _cfg().get("online_search", True):
-                cands = await asyncio.to_thread(self._kugou_search, key)
-                if cands:
-                    song = await asyncio.to_thread(self._kugou_fetch, cands[0], key)
+                bcands = await asyncio.to_thread(self._bili_search, key)
+                if bcands:
+                    song = await asyncio.to_thread(self._bili_fetch, bcands[0], key)
+                if song is None:
+                    cands = await asyncio.to_thread(self._kugou_search, key)
+                    if cands:
+                        song = await asyncio.to_thread(self._kugou_fetch, cands[0], key)
             if song is None:
                 return f"曲库没有，酷狗也没搜到。现有：{self._menu()}"
             mp3 = await asyncio.to_thread(self._run, CLIPS / song["file"])

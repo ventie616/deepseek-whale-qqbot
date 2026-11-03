@@ -133,6 +133,16 @@
     .igitem img { width:100%; display:block; aspect-ratio:3/4; object-fit:cover; }
     .igitem .cap { font-size:11.5px; color:#8ba3c0; padding:6px 8px; line-height:1.4;
                    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.subpane { display: none; }
+.subpane.on { display: block; }
+.arch-body { font-size:13.5px; line-height:1.85; color:#f2f7fc;
+  background:#0e1620; border:1px solid #1d2a3a; border-radius:10px; padding:14px 16px; }
+.arch-body .arch-h { font-weight:700; color:#ffffff; margin:16px 0 6px; font-size:14px;
+  border-bottom:1px solid #1d2a3a; padding-bottom:4px; }
+.arch-body .arch-h:first-child { margin-top:0; }
+.arch-body .arch-item { color:#dbe7f3; margin:3px 0; }
+.arch-body .arch-sub { color:#9fb2c6; margin:0 0 4px 18px; }
+.arch-body .arch-empty { color:#7b8b9c; }
 </style>
 </head>
 <body>
@@ -162,6 +172,7 @@
 <div class="navgroup"><div class="navtitle">创作</div>
 <button class="navitem" data-pane="pane-voice_status"><span class="ico">🔊</span>声音服务</button>
 <button class="navitem" data-pane="pane-wander"><span class="ico">🌐</span>上网记录</button>
+<button class="navitem" data-pane="pane-archive"><span class="ico">🏠</span>她的房间</button>
 <button class="navitem" data-pane="pane-slang"><span class="ico">💬</span>学到的词</button>
 </div>
 <div class="navgroup"><div class="navtitle">系统</div>
@@ -187,6 +198,15 @@
 <div class="stats" id="stats"></div>
 
 <section class="pane" id="pane-overview" data-group="概览">
+<div class="card">
+  <h3>常用入口</h3>
+  <div class="btns">
+    <button onclick="openURL('/tts-tuner')">声音调试台</button>
+    <button onclick="openURL('/knowledge')">知识图谱</button>
+    <button onclick="openURL('http://127.0.0.1:6185')">AstrBot 后台</button>
+    <button onclick="openURL('http://127.0.0.1:5099')">SnowLuma 后台</button>
+  </div>
+</div>
 <div class="grid">
   <div class="card">
     <h3>今天她做了什么</h3>
@@ -195,6 +215,10 @@
   <div class="card">
     <h3>系统状态</h3>
     <div class="acts" id="ov-services">读取中…</div>
+  </div>
+  <div class="card" style="grid-column: 1 / -1">
+    <h3>情绪曲线 <span class="sub" id="emo-now"></span></h3>
+    <div id="emo-chart">读取中…</div>
   </div>
 </div>
 </section>
@@ -223,6 +247,73 @@
 <div class="card">
   <h3>她自己上网看了什么 <span class="sub" id="wd-total"></span></h3>
   <div class="acts" id="wd-list">读取中…</div>
+</div>
+</section>
+
+<section class="pane" id="pane-archive" data-group="创作">
+<div class="btns" id="arch-tabs" style="margin-bottom:10px">
+  <button class="primary" data-sub="arch-day">她的一天</button>
+  <button data-sub="arch-room">她的房间</button>
+  <button data-sub="arch-read">读过什么</button>
+  <button data-sub="arch-covers">翻唱记录</button>
+  <span class="sub" id="arch-live" style="margin-left:10px;color:#6b829e">实时</span>
+</div>
+
+<!-- 子页 1：按天 -->
+<div class="subpane on" id="arch-day">
+<div class="grid two">
+  <div class="card" style="max-width:240px">
+    <h3>按天看</h3>
+    <div class="acts" id="arch-days">读取中…</div>
+  </div>
+  <div class="card">
+    <h3>她的一天 <span class="sub" id="arch-date"></span></h3>
+    <div class="acts" id="arch-sum" style="margin-bottom:6px"></div>
+    <div id="arch-body" class="arch-body">读取中…</div>
+  </div>
+</div>
+</div>
+
+<!-- 子页 2：房间 -->
+<div class="subpane" id="arch-room">
+<div class="grid">
+  <div class="card">
+    <h3>她自己写的 <span class="sub" id="room-sum"></span></h3>
+    <div class="acts" id="room-texts">读取中…</div>
+  </div>
+  <div class="card">
+    <h3>她存的图</h3>
+    <div class="acts" id="room-images">读取中…</div>
+  </div>
+  <div class="card">
+    <h3>她存下来的链接</h3>
+    <div class="acts" id="room-links">读取中…</div>
+  </div>
+  <div class="card">
+    <h3>她想改自己 <span class="sub" id="room-props-count"></span></h3>
+    <div class="acts" id="room-props">读取中…</div>
+  </div>
+</div>
+</div>
+
+<!-- 子页 3：读过 -->
+<div class="subpane" id="arch-read">
+<div class="grid">
+  <div class="card">
+    <h3>她读过的 <span class="sub" id="rd-count"></span></h3>
+    <div class="acts" id="rd-list">读取中…</div>
+  </div>
+</div>
+</div>
+
+<!-- 子页 4：翻唱 -->
+<div class="subpane" id="arch-covers">
+<div class="grid">
+  <div class="card">
+    <h3>她唱过的歌 <span class="sub" id="cv2-count"></span></h3>
+    <div class="acts" id="cv2-list">读取中…</div>
+  </div>
+</div>
 </div>
 </section>
 
@@ -255,8 +346,14 @@
     <div class="tokbars" id="tok-bili-bars"></div>
     <div class="toklabels" id="tok-bili-labels"></div>
   </div>
+  <div class="card">
+    <h3>刷网页 / 读书</h3>
+    <div class="tokchips" id="tok-web"></div>
+    <div class="tokbars" id="tok-web-bars"></div>
+    <div class="toklabels" id="tok-web-labels"></div>
+  </div>
 </div>
-<div class="toklabels" style="margin-top:8px"><span>上面三张都是最近 14 天，柱子按当天 token 数画</span></div>
+<div class="toklabels" style="margin-top:8px"><span>上面几张都是最近 14 天，柱子按当天 token 数画</span></div>
 
 </section>
 <section class="pane" id="pane-diary" data-group="对话">
@@ -451,6 +548,281 @@
 </main>
 </div>
 <script>
+const ARCH_SUBS = ["arch-day", "arch-room", "arch-read", "arch-covers"];
+window._archSub = "arch-day";
+window._archTimer = null;
+
+function archShow(sub) {
+  window._archSub = sub;
+  ARCH_SUBS.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle('on', id === sub);
+  });
+  document.querySelectorAll('#arch-tabs button[data-sub]').forEach(b => {
+    b.classList.toggle('primary', b.dataset.sub === sub);
+  });
+  archRefresh(true);
+}
+
+function archRefresh(force) {
+  const sub = window._archSub;
+  try {
+    if (sub === 'arch-day' && window.loadArchive) loadArchive(window._archDate);
+    if (sub === 'arch-room' && window.loadRoom) loadRoom();
+    if (sub === 'arch-read' && window.loadReading) loadReading();
+    if (sub === 'arch-covers' && window.loadCoversNew) loadCoversNew();
+    const el = document.getElementById('arch-live');
+    if (el) el.textContent = '实时 · ' + new Date().toLocaleTimeString('zh-CN', {hour12:false});
+  } catch (e) {}
+}
+
+document.addEventListener('click', ev => {
+  const b = ev.target.closest('#arch-tabs button[data-sub]');
+  if (b) archShow(b.dataset.sub);
+});
+
+setInterval(() => {
+  const pane = document.getElementById('pane-archive');
+  if (pane && pane.classList.contains('on')) archRefresh();
+}, 20000);
+
+function esc(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+async function loadArchive(date) {
+  try {
+    const d = await api('/api/archive');
+    const days = d.days || [];
+    const box = document.getElementById('arch-days');
+    if (!days.length) { box.textContent = '还没有档案'; return; }
+    box.innerHTML = days.map(x =>
+      `<div style="margin:4px 0"><a href="#" onclick="loadArchive('${x}');return false"
+        style="${x === (window._archDate || d.today) ? 'color:#93c5fd;font-weight:700' : ''}">${x}</a></div>`).join('');
+    const want = date || window._archDate || d.today || days[0];
+    window._archDate = want;
+    const r = await api('/api/archive/day?date=' + encodeURIComponent(want));
+    document.getElementById('arch-date').textContent = want;
+    if (r.ok) {
+      const lines = r.text.split('\n');
+      const m = lines.find(l => l.startsWith('> 今天：'));
+      document.getElementById('arch-sum').textContent = m ? m.replace(/^> /, '') : '';
+      // 去掉重复的 # 标题 和 > 摘要行，再把 ## 小节渲染成加粗标题
+      const rows = lines.filter(l => !l.startsWith('# ') && !l.startsWith('> 今天：'));
+      const html = rows.map(l => {
+        const t = l.trim();
+        if (!t) return '';
+        if (t.startsWith('## ')) return `<div class="arch-h">${esc(t.slice(3))}</div>`;
+        if (t.startsWith('- ')) return `<div class="arch-item">${esc(t.slice(2))}</div>`;
+        if (t.startsWith('  - ')) return `<div class="arch-sub">${esc(t.slice(4))}</div>`;
+        return `<div class="arch-item">${esc(t)}</div>`;
+      }).join('');
+      document.getElementById('arch-body').innerHTML = html || '<div class="arch-empty">这天没有记录</div>';
+    } else {
+      document.getElementById('arch-body').textContent = '这天没有记录';
+      document.getElementById('arch-sum').textContent = '';
+    }
+  } catch (e) {
+    document.getElementById('arch-body').textContent = '读取失败：' + e;
+  }
+}
+
+
+
+function _fmtDelta(delta) {
+  const NAME = { valence: '愉悦', arousal: '活跃', intimacy: '亲密', jealousy: '吃醋', energy: '精力' };
+  return Object.entries(delta || {})
+    .filter(([, v]) => Math.abs(v) >= 0.5)
+    .map(([k, v]) => `${NAME[k] || k}${v > 0 ? '+' : ''}${Math.round(v)}`)
+    .join(' ');
+}
+
+function _eventColor(kind) {
+  if (kind.includes('compare')) return '#f87171';
+  if (kind.includes('insult')) return '#fb7185';
+  if (kind.includes('praise')) return '#34d399';
+  if (kind.includes('jealous')) return '#f472b6';
+  return '#94a3b8';
+}
+
+function _eventLabel(kind) {
+  if (kind.includes('compare')) return '被比较';
+  if (kind.includes('insult')) return '被凶';
+  if (kind.includes('praise')) return '被夸';
+  if (kind.includes('apology')) return '被哄';
+  if (kind.includes('comfort')) return '被安慰';
+  if (kind.includes('cute')) return '撒娇';
+  if (kind.includes('reunion')) return '重逢';
+  return kind;
+}
+
+function _clusterEvents(evs) {
+  // 按时间排序后，60 秒内的并成一个
+  const list = [...evs].sort((a, b) => a.ts - b.ts);
+  const groups = [];
+  for (const e of list) {
+    const last = groups[groups.length - 1];
+    if (last && e.ts - last.ts <= 60) {
+      last.items.push(e);
+      last.ts = e.ts;
+      continue;
+    }
+    groups.push({ ts: e.ts, items: [e] });
+  }
+  // 代表色取优先级最高的那条
+  const rank = k => (k.includes('compare') ? 4 : k.includes('insult') ? 3 : k.includes('praise') ? 2 : 1);
+  for (const g of groups) {
+    g.lead = g.items.reduce((best, x) => (rank(x.kind) > rank(best.kind) ? x : best), g.items[0]);
+  }
+  return groups;
+}
+
+async function loadEmotionChart(hours) {
+  hours = hours || window._emoHours || 48;
+  window._emoHours = hours;
+  try {
+    const d = await api(`/api/emotion/history?hours=${hours}`);
+    const pts = d.points || [];
+    const evs = (d.events || []).filter(e => e.ts);
+    const groups = _clusterEvents(evs);
+    const now = d.now || {};
+    const badge = document.getElementById('emo-now');
+    if (badge) {
+      badge.innerHTML = now.label
+        ? `<b style="font-size:15px">${now.label}</b> · 愉悦 ${Math.round(now.valence)} · 活跃 ${Math.round(now.arousal)} · 精力 ${Math.round(now.energy)} · 亲密 ${Math.round(now.intimacy)}${now.jealousy >= 1 ? ` · <span style="color:#f472b6">吃醋 ${Math.round(now.jealousy)}</span>` : ''}`
+        : '';
+    }
+    const box = document.getElementById('emo-chart');
+    if (!box) return;
+    if (pts.length < 2) {
+      box.innerHTML = rangeBar() + `<div style="color:#6b829e">数据还不够（每 10 分钟记一次）</div>`;
+      return;
+    }
+
+    const W = 940, Hh = 300, padL = 42, padR = 16, padT = 24, padB = 34;
+    const t0 = pts[0].ts, t1 = pts[pts.length - 1].ts || t0 + 1;
+    const X = ts => padL + Math.max(0, Math.min(1, (ts - t0) / Math.max(1, t1 - t0))) * (W - padL - padR);
+    const Y = v => padT + (1 - Math.max(0, Math.min(100, v)) / 100) * (Hh - padT - padB);
+    const SERIES = [
+      ['v', '愉悦', '#6ee7b7'],
+      ['a', '活跃', '#60a5fa'],
+      ['i', '亲密', '#c084fc'],
+      ['energy', '精力', '#fbbf24'],
+      ['j', '吃醋', '#f472b6'],
+    ];
+    const nearest = ts => {
+      let best = pts[0], bd = Infinity;
+      for (const p of pts) { const dd = Math.abs(p.ts - ts); if (dd < bd) { bd = dd; best = p; } }
+      return best;
+    };
+
+    let svg = `<svg viewBox="0 0 ${W} ${Hh}" style="width:100%;height:${Hh}px">`;
+    for (const v of [0, 25, 50, 75, 100]) {
+      svg += `<line x1="${padL}" y1="${Y(v)}" x2="${W - padR}" y2="${Y(v)}" stroke="#22304a" stroke-width="1"${v === 50 ? ' stroke-dasharray="5 5"' : ''}/>`;
+      svg += `<text x="8" y="${Y(v) + 4}" fill="#5b708c" font-size="11">${v}</text>`;
+    }
+    const fmt = ts => { const dd = new Date(ts * 1000); return `${dd.getMonth() + 1}/${dd.getDate()} ${String(dd.getHours()).padStart(2, '0')}:00`; };
+    [[t0, 'start'], [(t0 + t1) / 2, 'middle'], [t1, 'end']].forEach(([ts, pos]) => {
+      svg += `<text x="${X(ts)}" y="${Hh - 8}" fill="#5b708c" font-size="11" text-anchor="${pos}">${fmt(ts)}</text>`;
+    });
+    // 每个事件簇一条竖线
+    for (const g of groups) {
+      const x = X(g.ts);
+      svg += `<line x1="${x.toFixed(1)}" y1="${padT}" x2="${x.toFixed(1)}" y2="${Hh - padB}" stroke="${_eventColor(g.lead.kind)}" stroke-width="1" stroke-dasharray="2 4" opacity="0.25"/>`;
+    }
+    const area = pts.map((p, i) => `${i ? 'L' : 'M'}${X(p.ts).toFixed(1)},${Y(p.v).toFixed(1)}`).join(' ') +
+      ` L${X(pts[pts.length - 1].ts).toFixed(1)},${Y(0)} L${X(pts[0].ts).toFixed(1)},${Y(0)} Z`;
+    svg += `<path d="${area}" fill="rgba(110,231,183,0.07)"/>`;
+    for (const [key, name, color] of SERIES) {
+      const line = pts.filter(p => p[key] !== undefined && p[key] !== null)
+        .map((p, i) => `${i ? 'L' : 'M'}${X(p.ts).toFixed(1)},${Y(p[key]).toFixed(1)}`).join(' ');
+      if (line) svg += `<path d="${line}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" opacity="0.95"/>`;
+    }
+    // 合并后的事件点
+    for (const g of groups) {
+      const p = nearest(g.ts);
+      const x = X(p.ts), y = Y(p.v), color = _eventColor(g.lead.kind);
+      const n = g.items.length;
+      const payload = JSON.stringify(g.items.map(x => ({ ts: x.ts, kind: x.kind, reason: x.reason, delta: x.delta }))).replace(/'/g, '&#39;');
+      if (n > 1) {
+        const r = 6 + Math.min(4, n);
+        svg += `<circle class="emo-ev" data-items='${payload}' cx="${x}" cy="${y}" r="${r}" fill="${color}" stroke="#0b1220" stroke-width="1.5" style="cursor:pointer"/>`;
+        svg += `<text x="${x}" y="${y + 3.5}" font-size="10" text-anchor="middle" fill="#0b1220" font-weight="700" style="pointer-events:none">${n}</text>`;
+      } else if (g.lead.kind.includes('praise') || g.lead.kind.includes('cute')) {
+        const r = 5.5;
+        svg += `<path class="emo-ev" data-items='${payload}' d="M${x - r},${y + r * 0.7} L${x},${y - r} L${x + r},${y + r * 0.7} Z" fill="${color}" stroke="#0b1220" stroke-width="1.5" style="cursor:pointer"/>`;
+      } else {
+        svg += `<circle class="emo-ev" data-items='${payload}' cx="${x}" cy="${y}" r="5.5" fill="${color}" stroke="#0b1220" stroke-width="1.5" style="cursor:pointer"/>`;
+      }
+    }
+    svg += `</svg>`;
+
+    const legend = SERIES.map(([key, name, color]) => {
+      const shown = key === 'v' ? now.valence : key === 'a' ? now.arousal : key === 'i' ? now.intimacy : key === 'j' ? now.jealousy : now.energy;
+      return `<span style="display:inline-flex;align-items:center;gap:5px;margin-right:14px">
+        <i style="display:inline-block;width:14px;height:3px;background:${color};border-radius:2px"></i>
+        <span style="color:#a9bcd4">${name}</span>
+        <b style="color:${color}">${shown === undefined || shown === null ? '-' : Math.round(shown)}</b></span>`;
+    }).join('');
+
+    // 事件清单：按簇显示，括号里是条数
+    const evList = groups.slice(-10).reverse().map(g => {
+      const time = new Date(g.ts * 1000).toLocaleString('zh-CN', { hour12: false }).slice(5);
+      const sum = {};
+      for (const it of g.items) for (const [k, v] of Object.entries(it.delta || {})) sum[k] = (sum[k] || 0) + v;
+      const reasons = [...new Set(g.items.map(x => x.reason).filter(Boolean))].slice(0, 2).join('；');
+      const count = g.items.length > 1 ? `<span style="color:#5b708c">×${g.items.length}</span>` : '';
+      return `<div style="display:flex;gap:8px;align-items:flex-start;margin:3px 0;font-size:12px">
+        <span style="color:${_eventColor(g.lead.kind)};min-width:46px">${_eventLabel(g.lead.kind)}</span>
+        <span style="color:#8aa0b8;min-width:92px">${time}</span>
+        <span style="color:#cfe0f0">${reasons}</span> ${count}
+        <span style="color:#6b829e;margin-left:auto">${_fmtDelta(sum)}</span></div>`;
+    }).join('');
+
+    box.innerHTML = rangeBar() + `<div style="position:relative">${svg}<div id="emo-tip" style="display:none;position:absolute;background:#0f1a2b;border:1px solid #2a3a52;border-radius:8px;padding:8px 10px;font-size:12px;color:#dbe7f3;pointer-events:none;max-width:300px;box-shadow:0 8px 24px rgba(0,0,0,.45)"></div></div>` +
+      `<div style="margin-top:6px;font-size:12px">${legend}</div>` +
+      `<div class="toklabels" style="margin-top:2px"><span>${pts.length} 个采样点 · ${evs.length} 个事件（合并成 ${groups.length} 个点）· 点上的数字是同一分钟内的条数</span></div>` +
+      (evList ? `<div style="margin-top:8px;border-top:1px solid #1c2a40;padding-top:6px"><div style="color:#8aa0b8;font-size:12px;margin-bottom:2px">最近的事件</div>${evList}</div>` : '');
+
+    // 悬停：列出这一簇里的全部事件
+    const tip = document.getElementById('emo-tip');
+    const wrap = tip.parentElement;
+    box.querySelectorAll('.emo-ev').forEach(el => {
+      el.addEventListener('mousemove', ev => {
+        const r = wrap.getBoundingClientRect();
+        let items = [];
+        try { items = JSON.parse(el.dataset.items || '[]'); } catch (err) {}
+        const head = items.length > 1 ? `${_eventLabel(items[0].kind)} 等 ${items.length} 条` : _eventLabel((items[0] || {}).kind || '');
+        tip.innerHTML = `<b style="color:${_eventColor((items[0] || {}).kind || '')}">${head}</b>` +
+          items.slice(0, 6).map(it => `<div style="margin-top:4px">
+            <span style="color:#8aa0b8">${new Date(it.ts * 1000).toLocaleTimeString('zh-CN', { hour12: false })}</span>
+            <span>${it.reason || ''}</span>
+            <span style="color:#9fe8c8">${_fmtDelta(it.delta)}</span></div>`).join('') +
+          (items.length > 6 ? `<div style="color:#5b708c">…还有 ${items.length - 6} 条</div>` : '');
+        tip.style.display = 'block';
+        tip.style.left = Math.min(ev.clientX - r.left + 12, r.width - 280) + 'px';
+        tip.style.top = (ev.clientY - r.top + 12) + 'px';
+      });
+      el.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+    });
+  } catch (e) {
+    const box = document.getElementById('emo-chart');
+    if (box) box.textContent = '读取失败：' + e;
+  }
+}
+
+function rangeBar() {
+  const cur = window._emoHours || 48;
+  const mk = (h, label) => `<button onclick="loadEmotionChart(${h})" style="margin-right:6px;${cur === h ? 'font-weight:700;border-color:#60a5fa' : ''}">${label}</button>`;
+  return `<div class="btns" style="margin-bottom:6px">${mk(24, '24 小时')}${mk(48, '48 小时')}${mk(168, '7 天')}</div>`;
+}
+async function showRoomFile(kind, name) {
+  const r = await fetch(`/api/room/file?kind=${kind}&name=${encodeURIComponent(name)}`,
+                        {headers: {'X-Token': _token()}});
+  const txt = await r.text();
+  alert(txt.slice(0, 1200));
+}
+
 async function loadOverview() {
   const d = await api('/api/status');
   const acts = d.activity || [];
@@ -491,6 +863,7 @@ async function loadCovers() {
 </script>
 <script>
 const TOKEN = "__TOKEN__";
+function _token() { return TOKEN; }
 const $ = id => document.getElementById(id);
 function toast(msg) {
   const t = $("toast"); t.textContent = msg; t.classList.add("show");
@@ -572,9 +945,11 @@ async function loadTokens() {
   if (!d.ok) return;
   const chat = (d.cats || {}).chat || { today: {}, daily_list: [] };
   const bili = (d.cats || {}).bili || { today: {}, daily_list: [] };
+  const web = (d.cats || {}).web || { today: {}, daily_list: [] };
   tokCard("tok-all", d.today || {}, d.daily_list || []);
   tokCard("tok-chat", chat.today || {}, chat.daily_list || []);
   tokCard("tok-bili", bili.today || {}, bili.daily_list || []);
+  tokCard("tok-web", web.today || {}, web.daily_list || []);
 }
 
 function intSection(title, items, nameKey) {
@@ -981,6 +1356,98 @@ setInterval(() => loadBili(), 60000);
 
 <script>
 
+
+async function loadRoom() {
+  try {
+    const d = await api('/api/room');
+    const s = d.summary || {};
+    const sum = document.getElementById('room-sum');
+    if (sum) sum.textContent = `${s.texts || 0} 段文字 / ${s.images || 0} 张图 / ${s.links || 0} 条链接 · ${s.mb || 0} MB`;
+    const texts = document.getElementById('room-texts');
+    if (texts) {
+      texts.innerHTML = (d.texts || []).length
+        ? d.texts.map(x => `<div style="margin-bottom:6px"><a href="#" onclick="showRoomFile('text','${x.name}');return false">${x.title}</a> <span style="color:#6b829e">${x.t}</span></div>`).join('')
+        : '还没写过';
+    }
+    const imgs = document.getElementById('room-images');
+    if (imgs) {
+      imgs.innerHTML = (d.images || []).length
+        ? d.images.map(x => `<img src="/api/room/file?kind=image&name=${encodeURIComponent(x.name)}&token=${encodeURIComponent(TOKEN)}" style="width:96px;height:96px;object-fit:cover;border-radius:8px;margin:4px" title="${x.name}">`).join('')
+        : '还没存过图';
+    }
+    const links = document.getElementById('room-links');
+    if (links) {
+      links.innerHTML = (d.links || []).length
+        ? d.links.map(x => `<div style="margin-bottom:8px"><a href="${x.url}" target="_blank">${(x.title || x.url).slice(0, 40)}</a> <span style="color:#6b829e">${x.t}${x.score ? ' · ' + x.score + '分' : ''}</span><div style="color:#8aa0b8">${(x.note || '').slice(0, 80)}</div></div>`).join('')
+        : '还什么都没存';
+    }
+    const props = d.proposals || [];
+    const pcount = document.getElementById('room-props-count');
+    if (pcount) pcount.textContent = props.length ? `${props.length} 条待审` : '';
+    const pbox = document.getElementById('room-props');
+    if (pbox) {
+      pbox.innerHTML = props.length
+        ? props.map(x => `<div style="margin-bottom:10px"><div>「${x.text}」</div>
+            <div style="color:#8aa0b8;margin:4px 0">理由：${x.reason || '—'} · ${x.t}</div>
+            <button onclick="decideProposal('${x.id}', true)">同意</button>
+            <button onclick="decideProposal('${x.id}', false)">拒绝</button></div>`).join('')
+        : '没有待审的';
+    }
+  } catch (e) {
+    const t = document.getElementById('room-texts');
+    if (t) t.textContent = '读取失败：' + e;
+  }
+}
+
+async function showRoomFile(kind, name) {
+  try {
+    const r = await fetch(`/api/room/file?kind=${kind}&name=${encodeURIComponent(name)}`,
+                          {headers: {'X-Token': TOKEN}});
+    const txt = await r.text();
+    alert(txt.slice(0, 1200));
+  } catch (e) {
+    alert('打不开：' + e);
+  }
+}
+
+async function loadReading() {
+  try {
+    const d = await api('/api/reading');
+    const items = d.items || [];
+    const count = document.getElementById('rd-count');
+    if (count) count.textContent = items.length ? `${items.length} 篇` : '';
+    const box = document.getElementById('rd-list');
+    if (box) {
+      box.innerHTML = items.length ? items.map(x =>
+        `<div style="margin-bottom:10px"><b>《${x.title || ''}》</b>
+         <span style="color:#6b829e">${(x.t || '').slice(5, 16)} · ${x.source || ''}</span>
+         <div style="color:#8aa0b8">${(x.quote || '').slice(0, 60)}</div>
+         <div>${(x.feel || '').slice(0, 70)}</div></div>`).join('') : '还没读过什么';
+    }
+  } catch (e) {
+    const box = document.getElementById('rd-list');
+    if (box) box.textContent = '读取失败：' + e;
+  }
+}
+
+async function loadCoversNew() {
+  try {
+    const d = await api('/api/covers');
+    const items = d.items || [];
+    const count = document.getElementById('cv2-count');
+    if (count) count.textContent = items.length ? `${items.length} 首` : '';
+    const box = document.getElementById('cv2-list');
+    if (box) {
+      box.innerHTML = items.length ? items.map(it =>
+        `<div style="margin-bottom:8px">· ${it.song || ''}
+         <span style="color:#6b829e">${(it.t || '').slice(5, 16)}</span></div>`).join('') : '还没唱过';
+    }
+  } catch (e) {
+    const box = document.getElementById('cv2-list');
+    if (box) box.textContent = '读取失败：' + e;
+  }
+}
+
 async function loadVoiceStatus() {
   try {
     const d = await api('/api/voice');
@@ -1005,8 +1472,7 @@ async function loadVoiceStatus() {
 
 async function loadImageGen() {
   try {
-    const d = await api('/api/image_gen');
-    document.getElementById('ig-total').textContent = `共 ${d.total} 张`;
+      document.getElementById('ig-total').textContent = `共 ${d.total} 张`;
     document.getElementById('ig-grid').innerHTML = (d.items || []).map(it => {
       const url = '/api/image/file?name=' + encodeURIComponent(it.name) + '&token=' + encodeURIComponent(TOKEN);
       return `<div class="igitem"><img src="${url}" loading="lazy"><div class="cap">${(it.scene||'').slice(0,60)}</div></div>`;
@@ -1050,9 +1516,13 @@ async function loadSlang() {
     items.forEach(b => b.classList.toggle('on', b.dataset.pane === id));
     try { localStorage.setItem('dash-pane', id); } catch (e) {}
     if (id === 'pane-token' && window.loadTokens) setTimeout(() => window.loadTokens(), 0);
-    if (id === 'pane-overview' && window.loadOverview) setTimeout(() => window.loadOverview(), 0);
+    if (id === 'pane-overview' && window.loadOverview) {
+      setTimeout(() => { window.loadOverview(); if (window.loadEmotionChart) window.loadEmotionChart(); }, 0);
+    }
+    if (id === 'pane-archive' && window.loadArchive) {
+      setTimeout(() => { window.archShow ? window.archShow(window._archSub || 'arch-day') : window.loadArchive(); }, 0);
+    }
     if (id === 'pane-voice_status' && window.loadVoiceStatus) { setTimeout(() => { window.loadVoiceStatus(); window.loadCovers(); }, 0); }
-    if (id === 'pane-image_gen' && window.loadImageGen) setTimeout(() => window.loadImageGen(), 0);
     if (id === 'pane-wander' && window.loadWander) setTimeout(() => window.loadWander(), 0);
     if (id === 'pane-slang' && window.loadSlang) setTimeout(() => window.loadSlang(), 0);
     if (id === 'pane-activity' && window.loadActivity) setTimeout(() => window.loadActivity(), 0);

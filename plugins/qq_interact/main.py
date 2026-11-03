@@ -20,19 +20,6 @@ from astrbot.api.event import AstrMessageEvent, MessageChain, filter
 from astrbot.api.message_components import Plain
 
 ROOT = Path(r"D:\QQrobot")
-
-TOKEN_FILE = ROOT / "secrets" / "onebot_token.txt"
-
-
-def _onebot_token() -> str:
-    """OneBot 访问 token：优先读 secrets/onebot_token.txt，其次环境变量 ONEBOT_TOKEN。"""
-    import os
-
-    try:
-        return TOKEN_FILE.read_text(encoding="utf-8").strip()
-    except OSError:
-        return os.environ.get("ONEBOT_TOKEN", "").strip()
-
 CFG = ROOT / "qq_interact.json"
 LOG = ROOT / "qq_interact.jsonl"
 ONEBOX = "http://127.0.0.1:3000"

@@ -13,7 +13,27 @@ ROOT_OUT = Path(r"D:\QQrobot\voice_out")
 from .client import VoiceClient
 
 
+EMOTION_CFG = Path(r"D:\QQrobot\voice_emotion.json")
+MOOD_FILE = Path(r"D:\QQrobot\mood.json")
+
+
+def _emotion_style() -> tuple[str, float] | None:
+    """按当前心情挑声线和语速；没开或读不到就返回 None。"""
+    try:
+        cfg = json.loads(EMOTION_CFG.read_text(encoding="utf-8"))
+        if not cfg.get("enabled", True):
+            return None
+        label = str((json.loads(MOOD_FILE.read_text(encoding="utf-8")) or {}).get("mood") or "")
+        rule = (cfg.get("map") or {}).get(label)
+        if not rule:
+            return None
+        return str(rule.get("voice") or ""), float(rule.get("speed") or 1.0)
+    except Exception:
+        return None
+
+
 @register("feiyu_voice", "kaiyuey03", "肥鱼说话、换声与按谱唱歌统一接口", "0.1.0")
+
 class FeiyuVoice(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
@@ -137,6 +157,11 @@ class FeiyuVoice(Star):
             speed = float(self.config.get("qwen_speed", 1.0))
         except (TypeError, ValueError):
             speed = 1.0
+        # 心情影响声线和语速
+        styled = _emotion_style()
+        if styled:
+            voice, speed = styled
+            logger.info(f"[feiyu_voice] 按心情调了声线：{voice} / {speed}")
         out = ROOT_OUT / f"qwen_{_dt.now().strftime('%H%M%S')}.wav"
         await synthesize(str(text)[:600], out, voice=voice, speed=speed)
         if self._provider() == "qwen_rvc":

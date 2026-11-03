@@ -186,7 +186,8 @@ def audio_list() -> dict:
             "clips": sum(len(s["clips"]) for s in songs),
             "fulls": sum(1 for s in songs if s["full"]),
             "mb": round(sum(
-                (s["full"]["size_kb"] if s["full"] else 0) + sum(c["size_kb"] or 0 for c in s["clips"])
+                ((s["full"]["size_kb"] or 0) if s["full"] else 0)
+                + sum((c["size_kb"] or 0) for c in s["clips"])
                 for s in songs
             ) / 1024, 1),
         },
@@ -389,6 +390,7 @@ def token_stats(days: int = 14) -> dict:
         "cats": {
             "chat": {"today": _zero(), "daily": {d: 0 for d in day_list}, "hourly": [0] * 24},
             "bili": {"today": _zero(), "daily": {d: 0 for d in day_list}, "hourly": [0] * 24},
+            "web": {"today": _zero(), "daily": {d: 0 for d in day_list}, "hourly": [0] * 24},
         },
     }
     if not TOKEN_LOG.exists():
@@ -404,7 +406,8 @@ def token_stats(days: int = 14) -> dict:
         ts = str(r.get("t") or "")
         day = ts[:10]
         total = int(r.get("total") or 0)
-        cat = "bili" if str(r.get("source")) == "B站" else "chat"
+        src = str(r.get("source") or "")
+        cat = "bili" if src == "B站" else ("web" if src == "网页浏览" else "chat")
         if day in agg["daily"]:
             agg["daily"][day] += total
             agg["cats"][cat]["daily"][day] += total
@@ -916,6 +919,237 @@ def cover_records(limit: int = 8) -> dict:
     return {"library": lib, "items": rows}
 
 
+
+def room_data() -> dict:
+    """她的房间：文字 / 图片 / 链接。"""
+    room = ROOT / "her_room"
+    text_dir = room / "text"
+    img_dir = room / "images"
+    texts = []
+    if text_dir.exists():
+        for f in sorted(text_dir.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)[:40]:
+            try:
+                head = f.read_text(encoding="utf-8").splitlines()[0].lstrip("# ").strip()
+            except Exception:
+                head = f.stem
+            texts.append({"name": f.name, "title": head[:60],
+                          "size": f.stat().st_size,
+                          "t": datetime.fromtimestamp(f.stat().st_mtime).strftime("%m-%d %H:%M")})
+    images = []
+    if img_dir.exists():
+        for f in sorted(img_dir.glob("*"), key=lambda p: p.stat().st_mtime, reverse=True)[:40]:
+            if f.is_file():
+                images.append({"name": f.name, "size": f.stat().st_size,
+                               "t": datetime.fromtimestamp(f.stat().st_mtime).strftime("%m-%d %H:%M")})
+    links = []
+    lf = room / "links.jsonl"
+    if lf.exists():
+        for line in lf.read_text(encoding="utf-8").splitlines()[-40:][::-1]:
+            try:
+                d = json.loads(line)
+            except Exception:
+                continue
+            links.append({"t": str(d.get("t", ""))[5:16], "title": d.get("title", ""),
+                          "url": d.get("url", ""), "note": d.get("note", ""),
+                          "score": d.get("score", ""), "source": d.get("source", "")})
+    props = []
+    pdir = room / "persona_proposals"
+    if pdir.exists():
+        for f in sorted(pdir.glob("*.json"), reverse=True):
+            try:
+                d = json.loads(f.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if d.get("state") == "pending":
+                props.append(d)
+    total = sum(f.stat().st_size for f in room.rglob("*") if f.is_file()) if room.exists() else 0
+    return {"ok": True, "texts": texts, "images": images, "links": links, "proposals": props,
+            "summary": {"texts": len(texts), "images": len(images), "links": len(links),
+                        "mb": round(total / 1024 / 1024, 2)}}
+
+
+
+def reading_data(limit: int = 20) -> dict:
+    """她读过的书/文。"""
+    rows = []
+    path = ROOT / "her_reading.jsonl"
+    if path.exists():
+        for line in path.read_text(encoding="utf-8").splitlines()[-limit:]:
+            try:
+                rows.append(json.loads(line))
+            except Exception:
+                continue
+    rows.reverse()
+    return {"ok": True, "items": rows}
+
+
+
+MOOD_DB = ROOT / "astrbot" / "data" / "plugin_data" / "astrbot_plugin_dfy_mood" / "mood.db"
+MOOD_JSON = ROOT / "mood.json"
+EMOTION_HIST = ROOT / "emotion_history.jsonl"
+HINT_BY_LABEL = {
+    "开心": "话多、想分享、愿意接话",
+    "撒娇": "语气软、想要关注",
+    "平静": "正常，不加戏",
+    "无聊": "容易主动找话题",
+    "困了": "反应慢、想睡",
+    "低落": "话少、提不起劲",
+    "委屈": "小声抱怨，等着被哄",
+    "烦躁": "话少、语气硬",
+    "吃醋": "嘴硬、爱追问",
+}
+
+
+def emotion_now() -> dict:
+    """读情绪插件的 db，取最近更新的那条。"""
+    try:
+        import sqlite3
+
+        if not MOOD_DB.exists():
+            return {}
+        conn = sqlite3.connect(f"file:{MOOD_DB}?mode=ro", uri=True, timeout=5)
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT * FROM mood_state ORDER BY updated_at DESC LIMIT 1").fetchone()
+        conn.close()
+        if not row:
+            return {}
+        d = dict(row)
+        return {
+            "label": d.get("label", ""),
+            "valence": round(float(d.get("valence") or 0), 1),
+            "arousal": round(float(d.get("arousal") or 0), 1),
+            "energy": round(float(d.get("energy") or 0), 1),
+            "intimacy": round(float(d.get("intimacy") or 0), 1),
+            "jealousy": round(float(d.get("jealousy") or 0), 1),
+            "updated": d.get("updated_at", 0),
+        }
+    except Exception:
+        return {}
+
+
+def mood_bridge() -> None:
+    """把情绪插件的状态同步进 mood.json，让别的插件读到的也是活的。"""
+    import time as _t
+    from datetime import date as _date
+
+    while True:
+        try:
+            e = emotion_now()
+            if e:
+                note = (f"愉悦 {e['valence']:.0f} · 活跃 {e['arousal']:.0f} · "
+                        f"精力 {e['energy']:.0f} · 亲密 {e['intimacy']:.0f}"
+                        + (f" · 吃醋 {e['jealousy']:.0f}" if e["jealousy"] >= 1 else ""))
+                data = {
+                    "date": _date.today().isoformat(),
+                    "mood": e["label"],
+                    "note": note,
+                    "hint": HINT_BY_LABEL.get(e["label"], ""),
+                    "rolled": _t.strftime("%H:%M"),
+                    "source": "dfy_mood",
+                }
+                MOOD_JSON.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+                # 每 10 分钟记一个快照，给情绪曲线用
+                try:
+                    last = 0.0
+                    if EMOTION_HIST.exists():
+                        lines = EMOTION_HIST.read_text(encoding="utf-8").strip().splitlines()
+                        if lines:
+                            last = float(json.loads(lines[-1]).get("ts", 0))
+                    if time.time() - last >= 600:
+                        with EMOTION_HIST.open("a", encoding="utf-8") as fh:
+                            fh.write(json.dumps({"ts": time.time(), "t": time.strftime("%Y-%m-%d %H:%M"),
+                                                 "label": e["label"], "v": e["valence"], "a": e["arousal"],
+                                                 "i": e["intimacy"], "j": e["jealousy"]},
+                                                ensure_ascii=False) + "\n")
+                        if EMOTION_HIST.stat().st_size > 2 * 1024 * 1024:
+                            EMOTION_HIST.replace(EMOTION_HIST.with_suffix(".old"))
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        _t.sleep(60)
+
+
+def start_mood_bridge() -> None:
+    import threading
+
+    th = threading.Thread(target=mood_bridge, name="mood-bridge", daemon=True)
+    th.start()
+
+
+
+def emotion_history(hours: int = 48) -> dict:
+    """最近 N 小时的情绪快照 + 期间的情绪事件（曲线用）。"""
+    import sqlite3
+    import time as _t
+
+    rows = []
+    try:
+        if EMOTION_HIST.exists():
+            cutoff = _t.time() - hours * 3600
+            for line in EMOTION_HIST.read_text(encoding="utf-8").splitlines():
+                try:
+                    d = json.loads(line)
+                except Exception:
+                    continue
+                if float(d.get("ts", 0)) >= cutoff:
+                    rows.append(d)
+    except Exception:
+        pass
+
+    events = []
+    try:
+        if MOOD_DB.exists():
+            conn = sqlite3.connect(f"file:{MOOD_DB}?mode=ro", uri=True, timeout=5)
+            conn.row_factory = sqlite3.Row
+            cutoff = _t.time() - hours * 3600
+            for r in conn.execute(
+                "SELECT ts, kind, reason, delta FROM mood_event WHERE ts >= ? ORDER BY ts",
+                (cutoff,),
+            ):
+                d = dict(r)
+                try:
+                    delta = json.loads(d.get("delta") or "{}")
+                except Exception:
+                    delta = {}
+                events.append({"ts": d["ts"], "kind": d.get("kind", ""),
+                               "reason": d.get("reason", ""), "delta": delta})
+            conn.close()
+    except Exception:
+        pass
+
+    e = emotion_now()
+    return {"ok": True, "points": rows, "events": events, "now": e, "hours": hours}
+
+
+
+ARCHIVE_DIR = ROOT / "her_archive"
+
+
+def archive_days(limit: int = 30) -> list[str]:
+    if not ARCHIVE_DIR.exists():
+        return []
+    return [f.stem for f in sorted(ARCHIVE_DIR.glob("*.md"), reverse=True)][:limit]
+
+
+def archive_read(stamp: str) -> dict:
+    p = ARCHIVE_DIR / f"{stamp}.md"
+    if not p.exists():
+        return {"ok": False, "error": "这天没有记录"}
+    return {"ok": True, "date": stamp, "text": p.read_text(encoding="utf-8", errors="replace")}
+
+
+def archive_summary(stamp: str) -> str:
+    p = ARCHIVE_DIR / f"{stamp}.md"
+    if not p.exists():
+        return ""
+    for line in p.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.startswith("> 今天："):
+            return line.lstrip("> ").strip()
+    return ""
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "WhaleConsole/1.0"
 
@@ -1048,8 +1282,69 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self._send(200, target.read_bytes(), "audio/wav")
             return
+        if path == "/api/reading":
+            self._json(reading_data())
+            return
+        if path == "/api/cover/file":
+            q = parse_qs(u.query)
+            name = (q.get("name") or [""])[0]
+            base = (ROOT / "covers").resolve()
+            fp = (base / name).resolve()
+            if not str(fp).startswith(str(base)) or not fp.exists():
+                self._json({"ok": False, "error": "没有这个文件"}, 404)
+                return
+            data = fp.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "audio/mpeg")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
+        if path == "/api/archive":
+            days = archive_days()
+            today = datetime.now().strftime("%Y-%m-%d")
+            self._json({"ok": True, "days": days, "today": today,
+                        "summary": archive_summary(today)})
+            return
+        if path == "/api/archive/day":
+            q = parse_qs(u.query)
+            stamp = (q.get("date") or [datetime.now().strftime("%Y-%m-%d")])[0]
+            self._json(archive_read(stamp))
+            return
+        if path == "/api/room":
+            self._json(room_data())
+            return
+        if path == "/api/room/file":
+            q = parse_qs(u.query)
+            name = (q.get("name") or [""])[0]
+            kind = (q.get("kind") or [""])[0]
+            base = ROOT / "her_room" / ("text" if kind == "text" else "images")
+            fp = (base / name).resolve()
+            if not str(fp).startswith(str(base.resolve())) or not fp.exists():
+                self._json({"ok": False, "error": "没有这个文件"}, 404)
+                return
+            data = fp.read_bytes()
+            ctype = "text/plain; charset=utf-8"
+            if kind != "text":
+                ctype = "image/jpeg" if fp.suffix.lower() in (".jpg", ".jpeg") else \
+                        "image/png" if fp.suffix.lower() == ".png" else \
+                        "image/webp" if fp.suffix.lower() == ".webp" else "application/octet-stream"
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
         if path == "/api/covers":
             self._json(cover_records())
+            return
+        if path == "/api/emotion":
+            self._json({"ok": True, "emotion": emotion_now()})
+            return
+        if path == "/api/emotion/history":
+            q = parse_qs(u.query)
+            hrs = int((q.get("hours") or ["48"])[0] or 48)
+            self._json(emotion_history(min(max(hrs, 1), 24 * 14)))
             return
         if path == "/api/status":
             self._json(status())
@@ -1192,7 +1487,6 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": False, "error": "unauthorized"}, 401)
                 return
             try:
-                import subprocess
                 import sys
 
                 out = subprocess.run(
@@ -1390,14 +1684,92 @@ class Handler(BaseHTTPRequestHandler):
             self._json(send_qq(text))
             return
 
+        if u.path == "/api/room/decide":
+            pid = str(body.get("id") or "")
+            ok = bool(body.get("ok"))
+            f = ROOT / "her_room" / "persona_proposals" / f"{pid}.json"
+            if not f.exists():
+                self._json({"ok": False, "error": "没有这条"}, 404)
+                return
+            d = json.loads(f.read_text(encoding="utf-8"))
+            if d.get("state") != "pending":
+                self._json({"ok": False, "error": "已处理过"}, 400)
+                return
+            try:
+                if ok:
+                    persona = ROOT / "persona" / "whale-girl.md"
+                    mark = "## 十三、我自己改的"
+                    body_text = persona.read_text(encoding="utf-8")
+                    if mark not in body_text:
+                        body_text = body_text.rstrip() + \
+                            f"\n\n{mark}\n\n（这里只放我自己改的话，底子和底线不归我动。）\n"
+                    archive = ROOT / "persona" / "archive"
+                    archive.mkdir(exist_ok=True)
+                    (archive / f"whale-girl_{datetime.now():%Y%m%d_%H%M%S}.md").write_text(
+                        body_text, encoding="utf-8")
+                    persona.write_text(body_text.rstrip() + f"\n\n- {str(d.get('text','')).strip()}\n",
+                                       encoding="utf-8")
+                    subprocess.run([str(ROOT / "venv" / "Scripts" / "python.exe"),
+                                    str(ROOT / "tools" / "set_persona.py")],
+                                   capture_output=True, timeout=120)
+                d["state"] = "approved" if ok else "rejected"
+                d["decided"] = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+                f.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
+                self._json({"ok": True, "state": d["state"]})
+            except Exception as exc:  # noqa: BLE001
+                self._json({"ok": False, "error": str(exc)}, 500)
+            return
+
         if u.path == "/api/service":
             action = str(body.get("action") or "")
+            if action == "start":
+                # 幂等启动：只拉起没在跑的
+                started = []
+                if not port_up(5099):
+                    subprocess.Popen(["cmd", "/c", str(ROOT / "_snowluma.bat")], cwd=str(ROOT),
+                                     creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
+                                     close_fds=True)
+                    started.append("snowluma")
+                if not port_up(6185):
+                    subprocess.Popen(["cmd", "/c", str(ROOT / "_astrbot.bat")], cwd=str(ROOT),
+                                     creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
+                                     close_fds=True)
+                    started.append("astrbot")
+                if not port_up(9880):
+                    try:
+                        subprocess.run(
+                            ["wsl.exe", "-d", "Ubuntu-22.04", "-u", "root", "bash", "-lc",
+                             "systemctl start feiyu-voice"], capture_output=True, timeout=120)
+                        started.append("voice")
+                        subprocess.Popen(["wsl.exe", "-d", "Ubuntu-22.04", "--", "sleep", "infinity"],
+                                         creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
+                                         close_fds=True)
+                        started.append("keepalive")
+                    except Exception:
+                        pass
+                self._json({"ok": True, "action": "start", "started": started,
+                            "note": "已经在跑的不会重复启动"})
+                return
+
             bat = {
-                "start": "start.bat",
+                "start": "start_auto.bat",          # 无 pause，控制台可调用
                 "stop": "stop.bat",
                 "restart": "_astrbot.bat",
-                "guard": "guard.bat",
+                "guard": "guard_auto.bat",          # 无 pause
+                "snowluma": "_snowluma.bat",
+                "astrbot": "_astrbot.bat",
             }.get(action)
+            if action == "voice":
+                try:
+                    subprocess.run(
+                        ["wsl.exe", "-d", "Ubuntu-22.04", "-u", "root", "bash", "-lc",
+                         "systemctl start feiyu-voice; systemctl is-active feiyu-voice"],
+                        capture_output=True, text=True, timeout=120,
+                    )
+                    self._json({"ok": True, "action": "voice"})
+                except Exception as exc:  # noqa: BLE001
+                    self._json({"ok": False, "error": str(exc)}, 500)
+                return
             if not bat:
                 self._json({"ok": False, "error": "未知动作"}, 400)
                 return
@@ -1443,6 +1815,9 @@ def open_dashboard_when_ready(port: int) -> None:
                 pass
             return
         time.sleep(0.15)
+
+
+start_mood_bridge()
 
 
 def main() -> int:

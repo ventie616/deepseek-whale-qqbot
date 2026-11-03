@@ -25,10 +25,36 @@ USAGE = ROOT / "token_usage.jsonl"
 MAX_MB = 5
 
 
+SOURCE_MAP = (
+    # 后台自己上网/读书/查资料 —— 这类也烧 token，单独算
+    ("web_explore", "网页浏览"),
+    ("her_reading", "网页浏览"),
+    ("web_access", "网页浏览"),
+    ("slang_learn", "网页浏览"),
+    ("her_room", "自省"),
+    ("qzone_post", "说说"),
+    ("cover_sing", "翻唱"),
+    ("bili_pusher", "B站"),
+)
+
+
+def estimate_tokens(text: str) -> int:
+    """没拿到官方 usage 时按字符粗估（中文约 1 字 ≈ 1.6 token）。"""
+    s = str(text or "")
+    if not s:
+        return 0
+    cn = sum(1 for ch in s if "\u4e00" <= ch <= "\u9fff")
+    other = len(s) - cn
+    return int(cn * 1.6 + other * 0.3)
+
+
 def _module_of_frame(frame) -> str:
     name = str(frame.f_globals.get("__name__") or "")
-    if "bili_pusher" in name:
-        return "B站"
+    # 插件是以 __name__ == "main" 加载的，光看模块名分不出来 → 看文件路径
+    path = str(frame.f_globals.get("__file__") or "").replace("\\", "/").lower()
+    for key, label in SOURCE_MAP:
+        if key in path or key in name:
+            return label
     if "agent" in name or "pipeline" in name or "respond" in name:
         return "聊天"
     if name.startswith("astrbot"):
@@ -61,6 +87,28 @@ def _usage_of(resp) -> dict:
             "total": int(total), "cached": int(cached)}
 
 
+def _scan_callers(depth: int = 14) -> str:
+    """从调用栈里找最近的一层插件代码，比只看上一层可靠（异步包装会插好几层）。"""
+    import inspect as _inspect
+
+    try:
+        stack = _inspect.stack()
+    except Exception:
+        return ""
+    for fr in stack[1:depth]:
+        path = str(fr.frame.f_globals.get("__file__") or "").replace("\\", "/").lower()
+        if "/token_meter/" in path:
+            continue          # 跳过计量插件自己
+        if "/plugins/" in path:
+            label = _module_of_frame(fr.frame)
+            if label not in ("其他", "main"):
+                return label
+            # 插件目录名兜底
+            seg = path.split("/plugins/")[-1].split("/")[0]
+            return seg or label
+    return ""
+
+
 class Main(star.Star):
     def __init__(self, context: star.Context) -> None:
         super().__init__(context)
@@ -88,14 +136,18 @@ class Main(star.Star):
 
         @functools.wraps(original)
         async def patched(*args, **kwargs):
-            caller = None
-            try:
-                caller = _module_of_frame(inspect.stack()[1].frame)
-            except Exception:
-                caller = "其他"
+            caller = _scan_callers() or "其他"
             resp = await original(*args, **kwargs)
             try:
                 u = _usage_of(resp)
+                if not u:
+                    prompt_text = " ".join(str(a) for a in args) + " " + " ".join(
+                        f"{k}={v}" for k, v in kwargs.items() if k != "model")
+                    est_p = estimate_tokens(prompt_text)
+                    est_c = estimate_tokens(getattr(resp, "completion_text", "") or "")
+                    if est_p or est_c:
+                        u = {"prompt": est_p, "completion": est_c,
+                             "total": est_p + est_c, "cached": 0, "est": True}
                 if u:
                     model = ""
                     try:
@@ -123,33 +175,47 @@ class Main(star.Star):
         if original_stream is not None and inspect.isasyncgenfunction(original_stream):
             @functools.wraps(original_stream)
             async def patched_stream(*args, **kwargs):
-                caller = None
-                try:
-                    caller = _module_of_frame(inspect.stack()[1].frame)
-                except Exception:
-                    caller = "其他"
+                caller = _scan_callers() or "其他"
                 agen = original_stream(*args, **kwargs)
                 last = None
-                async for chunk in agen:
-                    last = chunk
-                    yield chunk
+                collected: list[str] = []
                 try:
-                    u = _usage_of(last) if last is not None else None
-                    if u:
-                        model = str(kwargs.get("model") or "") or ""
-                        if not model:
-                            try:
-                                model = provider.get_model()
-                            except Exception:
-                                model = getattr(provider, "model_name", "") or ""
-                        plugin._append({
-                            "t": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                            "model": model,
-                            "source": caller,
-                            **u,
-                        })
-                except Exception:
-                    pass
+                    async for chunk in agen:
+                        last = chunk
+                        try:
+                            txt = getattr(chunk, "completion_text", None)
+                            if txt:
+                                collected.append(str(txt))
+                        except Exception:
+                            pass
+                        yield chunk
+                finally:
+                    # 注意：调用方可能提前 break/close，所以记录放在 finally 里
+                    try:
+                        u = _usage_of(last) if last is not None else None
+                        if not u:
+                            prompt_text = " ".join(str(a) for a in args) + " " + " ".join(
+                                f"{k}={v}" for k, v in kwargs.items() if k != "model")
+                            est_p = estimate_tokens(prompt_text)
+                            est_c = estimate_tokens("".join(collected))
+                            if est_p or est_c:
+                                u = {"prompt": est_p, "completion": est_c,
+                                     "total": est_p + est_c, "cached": 0, "est": True}
+                        if u:
+                            model = str(kwargs.get("model") or "") or ""
+                            if not model:
+                                try:
+                                    model = provider.get_model()
+                                except Exception:
+                                    model = getattr(provider, "model_name", "") or ""
+                            plugin._append({
+                                "t": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                "model": model,
+                                "source": caller,
+                                **u,
+                            })
+                    except Exception:
+                        pass
 
             try:
                 provider.text_chat_stream = patched_stream

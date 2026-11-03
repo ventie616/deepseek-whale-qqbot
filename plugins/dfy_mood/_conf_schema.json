@@ -1,0 +1,85 @@
+{
+  "enabled": {
+    "type": "bool",
+    "description": "启用心情系统",
+    "default": true,
+    "hint": "关闭后不再更新心情，也不会影响回复内容。"
+  },
+  "private_only": {
+    "type": "bool",
+    "description": "只在私聊中记录心情",
+    "default": true,
+    "hint": "开启后群聊消息不参与心情计算，避免群友互相影响。"
+  },
+  "owner_ids": {
+    "type": "string",
+    "description": "主人 QQ 号",
+    "default": "",
+    "hint": "可填写多个，用英文逗号分隔。只有主人能用 /mood set、/mood reset、/mood on、/mood off。"
+  },
+  "inject_prompt": {
+    "type": "bool",
+    "description": "把心情写入系统提示词",
+    "default": true,
+    "hint": "关闭后只记录心情、不改变回复语气。"
+  },
+  "max_events_per_message": {
+    "type": "int",
+    "description": "单条消息最多触发的事件数",
+    "default": 3,
+    "hint": "防止一句话同时命中过多规则导致心情跳变。"
+  },
+  "half_life_valence": {
+    "type": "float",
+    "description": "愉悦回归半衰期（小时）",
+    "default": 3.0,
+    "hint": "数值越小，开心或难过消退得越快。"
+  },
+  "half_life_arousal": {
+    "type": "float",
+    "description": "活跃回归半衰期（小时）",
+    "default": 3.0
+  },
+  "half_life_energy": {
+    "type": "float",
+    "description": "精力回归半衰期（小时）",
+    "default": 2.0,
+    "hint": "精力会向当前时段的目标值回归，深夜目标值很低。"
+  },
+  "half_life_intimacy": {
+    "type": "float",
+    "description": "亲密回归半衰期（小时）",
+    "default": 168.0,
+    "hint": "关系度变化最慢，默认一周衰减一半。"
+  },
+  "half_life_jealousy": {
+    "type": "float",
+    "description": "吃醋消退半衰期（小时）",
+    "default": 1.5,
+    "hint": "吃醋不会立刻消失，被哄之后消退更快。"
+  },
+  "tool_enable": {
+    "type": "bool",
+    "description": "允许模型自评情绪（function calling）",
+    "default": true,
+    "hint": "开启后注册 update_mood 工具，由主模型判断语义并择机调用。不需要额外 API Key，复用当前对话模型。"
+  },
+  "tool_hint": {
+    "type": "bool",
+    "description": "在疑似情绪消息里提示模型可调用工具",
+    "default": true,
+    "hint": "只在消息包含情绪候选词时追加一句提示，减少无效调用。"
+  },
+  "tool_max_intensity": {
+    "type": "float",
+    "description": "工具单次影响上限（0-1）",
+    "default": 1.0,
+    "hint": "限制模型给出的强度值，防止一次调用让心情跳变过大。"
+  },
+  "tool_cooldown_seconds": {
+    "type": "int",
+    "description": "同类事件工具冷却（秒）",
+    "default": 60,
+    "hint": "同一种情绪事件在冷却时间内重复调用不会生效。"
+  }
+}

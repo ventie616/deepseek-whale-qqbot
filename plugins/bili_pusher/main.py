@@ -74,6 +74,23 @@ RECENT_TTL_HOURS = 6
 LEARNED_RULES = Path(r"D:\QQrobot\learned_rules.json")
 COOKIE_FILE = Path(r"D:\QQrobot\bili_account.json")
 
+
+NOTIFY_STATE = ROOT / "bili_notify_state.json"
+
+
+def _load_notify_state() -> dict:
+    try:
+        return json.loads(NOTIFY_STATE.read_text(encoding="utf-8")) or {}
+    except Exception:
+        return {}
+
+
+def _save_notify_state(d: dict) -> None:
+    try:
+        NOTIFY_STATE.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
 DEFAULTS = {
     "enabled": False,
     "mode": "auto",                 # auto / bili_comment / qq_private
@@ -89,6 +106,12 @@ DEFAULTS = {
     "qq_layers": 2,
     # 推 QQ 时合并成一条消息（true = 每层单独发一条）
     "qq_split": False,
+    # —— 分享到 QQ 的节制（不然每条评论都推，太吵）——
+    "notify_on_comment": True,
+    "notify_prob": 0.3,          # 每条视频只有 30% 概率分享
+    "notify_max_per_day": 3,     # 一天最多分享几条
+    "notify_gap_minutes": 120,   # 两次分享至少隔多久
+    "notify_always_score": 9,    # 分数达到这个值就无视概率（有分的话）
 }
 
 UA = (
@@ -1498,6 +1521,58 @@ class Main(star.Star):
             keep = 2
         return layers[: max(1, min(keep, len(layers)))]
 
+
+    def _should_notify_qq(self, video: dict | None = None, force: bool = False) -> tuple[bool, str]:
+        """该不该把这条视频分享到 QQ。返回 (要不要, 理由)。"""
+        cfg = self.cfg
+        if force:
+            return True, "手动"
+        if not cfg.get("notify_on_comment", True):
+            return False, "关了分享"
+
+        from datetime import datetime as _dt
+        import time as _t
+
+        now = _dt.now()
+        today = now.strftime("%Y-%m-%d")
+        st = _load_notify_state()
+        if st.get("date") != today:
+            st = {"date": today, "count": 0, "last": 0}
+        count = int(st.get("count", 0) or 0)
+        last = float(st.get("last", 0) or 0)
+
+        # 分数够高就直推（如果这条视频带了评分）
+        score = 0
+        try:
+            score = float((video or {}).get("score") or (video or {}).get("worth_score") or 0)
+        except Exception:
+            score = 0
+        always = float(cfg.get("notify_always_score", 9) or 9)
+        if score and score >= always:
+            return True, f"高分 {score:.0f}"
+
+        if count >= int(cfg.get("notify_max_per_day", 3) or 3):
+            return False, f"今天已经推了 {count} 条"
+        gap = float(cfg.get("notify_gap_minutes", 120) or 120) * 60
+        if last and (_t.time() - last) < gap:
+            return False, "离上次太近"
+        prob = float(cfg.get("notify_prob", 0.3) or 0)
+        if random.random() >= prob:
+            return False, f"没抽中（{prob:.0%}）"
+        return True, "抽中了"
+
+    def _mark_notified(self) -> None:
+        from datetime import datetime as _dt
+        import time as _t
+
+        today = _dt.now().strftime("%Y-%m-%d")
+        st = _load_notify_state()
+        if st.get("date") != today:
+            st = {"date": today, "count": 0, "last": 0}
+        st["count"] = int(st.get("count", 0) or 0) + 1
+        st["last"] = _t.time()
+        _save_notify_state(st)
+
     async def _notify_bili_layers(self, video: dict, comment: str, note: str = "") -> bool:
         """推 QQ：默认合并成一条消息（一次只推一条）。
 
@@ -1661,16 +1736,24 @@ class Main(star.Star):
                 logger.info(f"[bili_pusher] B站评论成功：{note}")
                 await asyncio.to_thread(self._append_memory, video, text)
                 self._append_chat(f"在B站《{video.get('title')}》下评论了：{text}", tag="B站评论")
-                if self.cfg.get("notify_on_comment", True):
-                    await self._notify_bili_layers(
+                should, why = self._should_notify_qq(video)
+                if should:
+                    sent = await self._notify_bili_layers(
                         video, text, "" if visible else "可能还在审核"
                     )
+                    if sent:
+                        self._mark_notified()
+                        logger.info(f"[bili_pusher] 分享到 QQ（{why}）")
+                else:
+                    logger.info(f"[bili_pusher] 这次的视频不推 QQ：{why}")
                 self._log_activity("comment", video.get("title") or "", text, video.get("bvid") or "")
                 return True, f"已评论：{text}"
             logger.warning(f"[bili_pusher] B站评论失败：{msg}")
             if mode == "bili_comment":
                 return False, msg
-            await self._notify_bili_layers(video, text, "评论区没发出去")
+            if self._should_notify_qq(video)[0]:
+                await self._notify_bili_layers(video, text, "评论区没发出去")
+                self._mark_notified()
             self._remember(video["bvid"])
             await asyncio.to_thread(
                 self._write_report, video, text, video.get("worth_reason", ""), False, msg, skipped

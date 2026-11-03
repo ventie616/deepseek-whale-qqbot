@@ -79,6 +79,23 @@ class Main(star.Star):
         # 0) 全部走 flash（试线路用）
         if _cfg().get("force_flash"):
             req.model = FLASH_MODEL
+            # 短寒暄连工具也不用挂，省几千 token 的 schema
+            # 没提到任何工具相关词的短消息 → 不挂工具（省几千 token 的 schema）
+            low = text.lower()
+            wants_tool = any(
+                (k.lower() in low)
+                for keys in TOOL_TRIGGERS.values()
+                for k in keys
+            )
+            casual = (not has_media and not wants_tool and len(text) <= 40) or (
+                len(text) <= 6 and not has_media
+            )
+            if casual and getattr(req, "func_tool", None):
+                req.func_tool = ToolSet()
+                if self._last_model != "flash-forced-noTool":
+                    logger.info(f"[cost] 强制 flash + 免工具（{text[:12]}）")
+                    self._last_model = "flash-forced-noTool"
+                return
             if self._last_model != "flash-forced":
                 logger.info(f"[cost] 强制 flash（{len(text)} 字）")
                 self._last_model = "flash-forced"
@@ -86,7 +103,7 @@ class Main(star.Star):
 
         # 1) 简单闲聊 -> flash，且不需要工具
         simple = (
-            len(text) <= 16
+            len(text) <= 24
             and not has_media
             and (SIMPLE_PAT.match(text) is not None or len(text) <= 3)
         )
