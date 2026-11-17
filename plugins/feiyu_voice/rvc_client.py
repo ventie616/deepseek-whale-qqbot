@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
+from uuid import uuid4
 
 BASE = "http://127.0.0.1:9880"
 KEY_FILE = Path(r"D:\QQrobot\secrets\feiyu_voice_key.txt")
@@ -20,7 +24,7 @@ def _auth() -> dict:
 
 
 def _upload(path: Path) -> str:
-    boundary = "----feiyu" + str(int(time.time()))
+    boundary = "----feiyu" + uuid4().hex
     body = bytearray()
     body += f"--{boundary}\r\n".encode()
     body += f'Content-Disposition: form-data; name="file"; filename="{path.name}"\r\n'.encode()
@@ -31,8 +35,34 @@ def _upload(path: Path) -> str:
         BASE + "/v1/assets", data=bytes(body), method="POST",
         headers={**_auth(), "Content-Type": f"multipart/form-data; boundary={boundary}"},
     )
-    with urllib.request.urlopen(req, timeout=120) as r:
-        return json.loads(r.read())["id"]
+    try:
+        return _read_upload(req)
+    except urllib.error.URLError as exc:
+        if os.name != "nt" or not isinstance(exc.reason, ConnectionRefusedError):
+            raise
+        _wake_local_service()
+        return _read_upload(req)
+
+
+def _read_upload(req: urllib.request.Request) -> str:
+    with urllib.request.urlopen(req, timeout=20) as response:
+        return json.loads(response.read())["id"]
+
+
+def _wake_local_service() -> None:
+    """Wake the existing WSL service if Windows lost its localhost relay."""
+    subprocess.run(
+        ["wsl.exe", "-d", "Ubuntu-22.04", "-u", "root", "--", "systemctl", "start", "feiyu-voice"],
+        check=True, timeout=20, creationflags=subprocess.CREATE_NO_WINDOW,
+        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    for _ in range(12):
+        try:
+            with urllib.request.urlopen(BASE + "/health", timeout=1):
+                return
+        except urllib.error.URLError:
+            time.sleep(0.25)
+    raise ConnectionError("本地声音服务未能恢复")
 
 
 def _submit(audio_id: str, voice: str = "feiyu") -> str:
@@ -46,14 +76,14 @@ def _submit(audio_id: str, voice: str = "feiyu") -> str:
 
 
 def _wait(job_id: str, timeout: float = 180.0) -> None:
-    deadline = time.time() + timeout
-    while time.time() < deadline:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
         req = urllib.request.Request(BASE + f"/v1/jobs/{job_id}", headers=_auth())
         with urllib.request.urlopen(req, timeout=20) as r:
             st = json.loads(r.read())
         if st.get("status") == "success":
             return
-        if st.get("status") == "failed":
+        if st.get("status") in ("failed", "interrupted"):
             raise RuntimeError(f"RVC 失败：{st.get('error')}")
         time.sleep(1.5)
     raise RuntimeError("RVC 超时")

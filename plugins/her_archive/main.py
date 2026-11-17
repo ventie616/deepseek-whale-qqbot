@@ -17,6 +17,20 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from astrbot.api import logger, star
+
+try:
+    import sys as _sys
+    _sys.path.insert(0, str(Path(r"D:\QQrobot") / "tools"))
+    from speech_samples import build as _build_samples, pick as _pick_samples
+
+    try:
+        from tieba_style import build as _build_tieba, pick as _pick_tieba
+    except Exception:
+        _build_tieba = None
+        _pick_tieba = None
+except Exception:  # 没有采样工具时静默跳过
+    _build_samples = None
+    _pick_samples = None
 from astrbot.api.event import AstrMessageEvent, filter
 
 ROOT = Path(r"D:\QQrobot")
@@ -186,6 +200,23 @@ class HerArchive(star.Star):
                          f" · 上网 {counts['wander']} 次 · 说说 {counts['qzone']} 条"))
         lines.insert(2, "")
 
+        # 顺手刷新「真实说话样本」（6 小时一次）
+        try:
+            stamp_file = ROOM / "speech_samples.md"
+            if _build_samples is not None and (
+                not stamp_file.exists() or (datetime.now().timestamp() - stamp_file.stat().st_mtime) > 6 * 3600
+            ):
+                _build_samples()
+                logger.info("[her_archive] 已刷新说话样本")
+            tieba_file = ROOM / "tieba_style.md"
+            if _build_tieba is not None and (
+                not tieba_file.exists() or (datetime.now().timestamp() - tieba_file.stat().st_mtime) > 6 * 3600
+            ):
+                _build_tieba()
+                logger.info("[her_archive] 已刷新贴吧话术")
+        except Exception:
+            pass
+
         body = "\n".join(lines).rstrip() + "\n"
         (ARCHIVE / f"{stamp}.md").write_text(body, encoding="utf-8")
         return body
@@ -243,9 +274,23 @@ class HerArchive(star.Star):
             return
         try:
             y = date.today() - timedelta(days=1)
+            parts = []
             line = self.summary(y)
             if line:
-                req.system_prompt = (req.system_prompt or "") + f"\n\n【昨天】{line}"
+                parts.append(f"【昨天】{line}")
+            try:
+                if _pick_samples is not None:
+                    samples = _pick_samples(5)
+                    if samples:
+                        parts.append("【他平时说话的样子，学语气不学内容】\n" + "\n".join(f"- {s}" for s in samples))
+                if _pick_tieba is not None:
+                    tb = _pick_tieba(3)
+                    if tb:
+                        parts.append("【贴吧里的人怎么说话，学语气不学内容】\n" + "\n".join(f"- {s}" for s in tb))
+            except Exception:
+                pass
+            if parts:
+                req.system_prompt = (req.system_prompt or "") + "\n\n" + "\n\n".join(parts)
         except Exception:
             pass
 

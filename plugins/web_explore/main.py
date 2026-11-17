@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import ipaddress
+import socket
 import random
 import re
 import time
@@ -18,19 +20,13 @@ from astrbot.api import logger, star
 from astrbot.api.event import AstrMessageEvent, MessageChain, filter
 from astrbot.api.message_components import Plain
 import sys as _sys
-from pathlib import Path as _Path
-# offpeak 在仓库 tools/ 下；插件目录向上找到项目根
-for _cand in (_Path(__file__).resolve().parents[3] / "tools",
-              _Path(__file__).resolve().parents[2] / "tools",
-              _Path(r"D:\\QQrobot") / "tools"):
-    if (_cand / "offpeak.py").exists():
-        _sys.path.insert(0, str(_cand))
-        break
-try:
-    from offpeak import is_offpeak as _is_offpeak
-except Exception:  # 没配工具目录时不做限制
-    def _is_offpeak(now=None):
-        return True, "未配置"
+_sys.path.insert(0, r'D:\QQrobot\tools')
+from offpeak import is_offpeak as _is_offpeak
+from delivered_shares import DeliveredShares
+from persona_learning import (
+    MAX_OPEN_TASKS, UNTRUSTED, LearningAgenda, LearningJournal, build_note,
+    clean, parse_object, persona_core, public_url, wait_hours,
+)
 
 ROOT = Path(r"D:\QQrobot")
 CFG = ROOT / "web_explore.json"
@@ -90,6 +86,7 @@ DEFAULTS = {
     "sources": ["weibo", "tieba", "juejin", "bili", "search"],
     "min_score": 6,
     "batch": 1,
+    "learning_enabled": True,
 }
 
 
@@ -118,6 +115,8 @@ class WebExplore(star.Star):
     def __init__(self, context: star.Context) -> None:
         super().__init__(context)
         self._task: asyncio.Task | None = None
+        self._learning_lock = asyncio.Lock()
+        self._journal = LearningJournal()
 
     async def initialize(self) -> None:
         self._task = asyncio.create_task(self._loop())
@@ -156,13 +155,15 @@ class WebExplore(star.Star):
             headers["Authorization"] = f"Bearer {key}"
         with httpx.Client(timeout=25) as c:
             r = c.post(f"{ANYSEARCH}/v1/search", headers=headers,
-                       json={"query": query, "max_results": limit})
+                       json={"query": query, "max_results": limit, "language": "zh-CN"})
             r.raise_for_status()
             d = r.json()
+        if d.get("code") != 0:
+            raise RuntimeError("搜索服务返回错误")
         out = []
         for it in ((d.get("data") or {}).get("results") or [])[:limit]:
             out.append({"title": it.get("title") or "", "url": it.get("url") or "",
-                        "snippet": it.get("snippet") or ""})
+                        "snippet": it.get("snippet") or it.get("content") or ""})
         return out
 
     def _extract(self, url: str, limit: int = 1500) -> str:
@@ -170,11 +171,116 @@ class WebExplore(star.Star):
         key = _key()
         if key:
             headers["Authorization"] = f"Bearer {key}"
-        with httpx.Client(timeout=30) as c:
-            r = c.post(f"{ANYSEARCH}/v1/extract", headers=headers, json={"url": url})
-            r.raise_for_status()
-            d = r.json()
-        return ((d.get("data") or {}).get("content") or "")[:limit]
+        try:
+            with httpx.Client(timeout=20) as client:
+                response = client.post(
+                    f"{ANYSEARCH}/v1/extract", headers=headers, json={"url": url}
+                )
+                response.raise_for_status()
+                result = response.json()
+            if result.get("code") != 0:
+                raise ValueError("正文服务返回错误")
+            data = result.get("data") or {}
+            body = data.get("content") or data.get("markdown") or ""
+            if len(clean(body, limit)) >= 100:
+                return body[:limit]
+        except (httpx.HTTPError, ValueError, TypeError):
+            logger.info("[web_explore] 正文服务未提取到内容，尝试直接读网页")
+        return self._fetch_page(url, limit)
+
+    def _fetch_page(self, url: str, limit: int) -> str:
+        from bs4 import BeautifulSoup
+
+        # Validate every redirect before contacting a new destination.
+        with httpx.Client(timeout=12, follow_redirects=False, headers=self.UA) as client:
+            for _ in range(4):
+                url = public_url(url)
+                if not url:
+                    raise ValueError("正文链接不是公开网页")
+                host = httpx.URL(url).host
+                addresses = socket.getaddrinfo(host, None)
+                if not addresses or any(
+                    not ipaddress.ip_address(address[4][0]).is_global for address in addresses
+                ):
+                    raise ValueError("正文链接指向内网")
+                with client.stream("GET", url) as response:
+                    if response.is_redirect:
+                        location = response.headers.get("location")
+                        if not location:
+                            raise ValueError("网页跳转没有目标")
+                        url = str(response.url.join(location))
+                        continue
+                    response.raise_for_status()
+                    content_type = response.headers.get("content-type", "").lower()
+                    if not any(kind in content_type for kind in ("text/html", "application/xhtml", "text/plain")):
+                        raise ValueError("链接不是网页正文")
+                    chunks, size = [], 0
+                    for chunk in response.iter_bytes():
+                        size += len(chunk)
+                        if size > 2 * 1024 * 1024:
+                            raise ValueError("网页正文过大")
+                        chunks.append(chunk)
+                    raw = b"".join(chunks)
+                    if "text/plain" in content_type:
+                        return raw.decode(response.encoding or "utf-8", errors="replace")[:limit]
+                    soup = BeautifulSoup(raw, "lxml")
+                    for tag in soup(["script", "style", "noscript", "nav", "header", "footer", "form", "aside"]):
+                        tag.decompose()
+                    main = soup.find("article") or soup.find("main") or soup.body or soup
+                    return main.get_text(" ", strip=True)[:limit]
+        raise ValueError("网页跳转过多")
+
+    def _learning_sources(self, question: str, known_urls: set) -> tuple[list[dict], str]:
+        from ..web_access.main import WebAccess
+
+        sources, visited = [], set()
+        errors = {"search": 0, "extract": 0, "short": 0, "filtered": 0}
+        searches = (self._search, lambda q, n: WebAccess._bing(self, q, n))
+        for search in searches:
+            try:
+                candidates = search(question, 7)
+            except Exception as exc:
+                errors["search"] += 1
+                logger.info(f"[web_explore] 搜索失败：{type(exc).__name__}")
+                continue
+            attempts = 0
+            for candidate in candidates:
+                url = public_url(candidate.get("url", ""))
+                parsed = httpx.URL(url) if url else None
+                suffix = parsed.path.lower() if parsed else ""
+                host = parsed.host if parsed else ""
+                video_page = (
+                    host in ("youtu.be", "youtube.com", "www.youtube.com", "m.youtube.com")
+                    or (host.endswith("bilibili.com") and suffix.startswith("/video/"))
+                )
+                if (not url or video_page or url in visited or url in known_urls
+                        or any(site in url for site in BAD_SITES)
+                        or suffix.endswith((".pdf", ".doc", ".docx", ".mp4", ".mp3"))):
+                    errors["filtered"] += 1
+                    continue
+                visited.add(url)
+                attempts += 1
+                try:
+                    body = clean(self._extract(url, 6000), 5500)
+                except Exception as exc:
+                    errors["extract"] += 1
+                    logger.info(f"[web_explore] 正文读取失败：{type(exc).__name__}")
+                    body = ""
+                if len(body) >= 100:
+                    sources.append({
+                        "title": clean(candidate.get("title"), 100) or url, "url": url, "body": body
+                    })
+                elif body:
+                    errors["short"] += 1
+                if len(sources) == 2:
+                    return sources, ""
+                if attempts >= 4:
+                    break
+            if sources:
+                return sources, ""
+        labels = {"search": "搜索失败", "extract": "正文读取失败", "short": "正文过短", "filtered": "已过滤链接"}
+        counts = "、".join(f"{labels[key]} {value}" for key, value in errors.items() if value)
+        return [], f"正文尚未取到（{counts or '搜索结果为空'}），留待下次再查"
 
 
     # ---------------- 多源抓取 ----------------
@@ -338,6 +444,173 @@ class WebExplore(star.Star):
             out.append(("杂项", str(seed)))
         return out or [("动漫", "动漫 新番 推荐")]
 
+    async def _plan_learning(self, cfg, agenda, recent, core) -> tuple[dict | None, str]:
+        now = time.time()
+        options = [
+            {"number": i, "topic": item["topic"], "question": item["question"],
+             "why": item["why"], "last_reason": item.get("reason", ""),
+             "status": item["status"], "available": item["due"] <= now}
+            for i, item in enumerate(agenda.tasks, 1)
+        ]
+        prompt = (
+            "你有一张「未完的事」清单。想一想现在愿意做什么，选一项行动。"
+            "follow 继续查一项 available=true 的问题。start 开一个具体的新问题，须有空位。"
+            "park 把一项暂时搁置，写下想过几小时再看。drop 收起一项不想再追的事，写下缘由。"
+            "rest 这轮先歇着。按兴趣、上次卡住的地方和这次想知道什么来选。"
+            "reason 写你自己的理由，question 仅 start 时填，number 仅选择已有事项时填。"
+            '只输出 JSON：{"action":"follow|start|park|drop|rest","number":1,'
+            '"question":"","reason":"","hours":48}。\n'
+            + json.dumps({
+                "tasks": options,
+                "slots_left": MAX_OPEN_TASKS - len(options),
+                "directions": self._topics(cfg),
+                "recent": [n["question"] for n in recent[:8]],
+            }, ensure_ascii=False)
+        )
+        if len(options) == MAX_OPEN_TASKS and not agenda.due(now):
+            prompt = "现在清单已满，且都还没到续查时间。可以放下一个失去兴趣的事项，或歇一轮。\n" + prompt
+        raw = parse_object(await self._llm(prompt, core + "\n" + UNTRUSTED))
+        action, number = raw.get("action"), raw.get("number")
+        reason = clean(raw.get("reason"), 120)
+        task = agenda.tasks[number - 1] if type(number) is int and 1 <= number <= len(options) else None
+
+        if action == "start" and len(options) < MAX_OPEN_TASKS and reason:
+            question = clean(raw.get("question"), 95)
+            previous = [note["question"] for note in recent] + [item["question"] for item in agenda.tasks]
+            if question and question.rstrip("？?") not in {q.rstrip("？?") for q in previous}:
+                new_task = agenda.add(question, reason, now)
+                agenda.save()
+                return new_task, ""
+        elif action == "follow" and task is not None and task["due"] <= now and reason:
+            task["status"] = "open"
+            agenda.record("resume", reason, now, task)
+            agenda.save()
+            return task, ""
+        elif action == "park" and task is not None and reason:
+            agenda.park(task, reason, now, wait_hours(raw.get("hours"), 48))
+            agenda.save()
+            return None, f"先搁一下「{task['topic']}」。{reason}"
+        elif action == "drop" and task is not None and reason:
+            agenda.finish(task, "drop", reason, now)
+            agenda.save()
+            return None, f"把「{task['topic']}」收起来了。{reason}"
+        elif action == "rest" and reason:
+            agenda.record("rest", reason, now)
+            agenda.save()
+            return None, reason
+        return None, "这轮还没挑好要做的事"
+
+    async def _learn_once(self, cfg: dict, state: dict, force: bool) -> tuple[bool, str]:
+        core = persona_core()
+        recent = self._journal.recent()
+        agenda = LearningAgenda()
+        agenda.reconcile(recent)
+        if agenda.is_new and recent and recent[0].get("next_question"):
+            agenda.add(recent[0]["next_question"], "接着上一次没查完的问题", time.time(), recent[0])
+            agenda.save()
+        task, decision = await self._plan_learning(cfg, agenda, recent, core)
+        if task is None:
+            return True, decision
+        question = task["question"]
+        note_id = task.get("last_note")
+        parent = self._journal.get(note_id) or ({"id": note_id} if note_id else {})
+
+        def retry(reason: str) -> tuple[bool, str]:
+            now = time.time()
+            task["failures"] = int(task.get("failures", 0)) + 1
+            if task["failures"] >= 2:
+                agenda.park(task, reason, now, 48)
+            else:
+                task.update(due=now + 6 * 3600, reason=reason)
+                agenda.record("retry", reason, now, task)
+            agenda.save()
+            return False, reason
+        known_urls = {fact.get("url") for note in recent for fact in note["facts"]}
+        sources, failure = await asyncio.to_thread(self._learning_sources, question, known_urls)
+        if not sources:
+            return retry(failure)
+
+        prompt = (
+            "根据正文回答这个问题。每条 claim 必须能从对应正文得到支持，"
+            "evidence 必须是正文中连续的原话。多篇不一致就保留差异。"
+            "thought 写你自己的简短想法。只有新资料真的改变了之前看法，才写 revision，"
+            "说清改了什么和为什么。还有想追的具体问题再填 next_question，否则用空串。"
+            "keywords 填聊天时能命中这个主题的具体词组。决策 decision 可选 continue（有后续问题）、"
+            "park（暂时放下）或 done（已经查清或想收尾）。reason 写决策理由，hours 写希望过几小时再接着查。"
+            '只输出 JSON：{"facts":[{"source":1,"claim":"","evidence":""}],'
+            '"thought":"","revision":"","next_question":"","keywords":[""],'
+            '"decision":"continue|park|done","reason":"","hours":6}。\n'
+            + json.dumps({
+                "question": question,
+                "previous": {"question": parent.get("question"), "thought": parent.get("thought")},
+                "sources": [dict(number=i, **s) for i, s in enumerate(sources, 1)],
+            }, ensure_ascii=False)
+        )
+        raw = parse_object(await self._llm(prompt, core + "\n" + UNTRUSTED))
+        note = build_note(question, parent, sources, raw)
+        if not note:
+            return retry("正文里没有核对到可记录的摘录")
+        outcome = raw.get("decision")
+        if outcome not in ("park", "done"):
+            outcome = "continue" if note["next_question"] else "done"
+        reason = clean(raw.get("reason"), 120) or {
+            "park": "这个问题过段时间再看",
+            "continue": "还有一件事没弄清",
+            "done": "这轮没有留下要续查的问题",
+        }[outcome]
+        if outcome == "done":
+            note["next_question"] = ""
+        note["agenda"] = {"task_id": task["id"], "status": outcome, "reason": reason,
+                          "at": time.time(),
+                          "hours": wait_hours(raw.get("hours"), 48 if outcome == "park" else 6)}
+        self._journal.save(note)
+        agenda.apply_note(note)
+        agenda.save()
+        state.update(count=int(state.get("count", 0)) + 1, last=time.time())
+        _save(STATE, state)
+
+        first = note["facts"][0]
+        report = f"这轮查了「{question}」\n{note['thought']}"
+        if note["revision"]:
+            report += f"\n{note['revision']}"
+        if note["next_question"]:
+            report += f"\n还想查：{note['next_question']}"
+        report += f"\n{reason}"
+        sent = True
+        if cfg.get("notify", True) and not force:
+            sent = await self._send_qq(
+                f"刚去查了「{question}」", note["thought"],
+                {"title": question, "url": first["url"], "learning_id": note["id"]},
+            )
+        try:
+            row = {"t": note["read_at"], "source": "search", "title": first["title"],
+                   "url": first["url"], "line1": question, "line2": note["thought"],
+                   "ok": sent, "learning_id": note["id"]}
+            with LOG.open("a", encoding="utf-8") as stream:
+                stream.write(json.dumps(row, ensure_ascii=False) + "\n")
+        except OSError as exc:
+            logger.info(f"[web_explore] 浏览日志写入失败：{type(exc).__name__}")
+        return True, report
+
+    @filter.on_llm_request()
+    async def inject_learning_context(self, event: AstrMessageEvent, req) -> None:
+        if not self._cfg().get("learning_enabled", True):
+            return
+        current = getattr(req, "system_prompt", "") or ""
+        if "大肥鱼" not in current or "鲸鱼娘" not in current:
+            return
+        req.system_prompt = current + "\n\n" + persona_core()
+        note = self._journal.recall(event.get_message_str() or "")
+        if not note:
+            return
+        lines = ["【这轮可能有关的旧阅读笔记】", f"当时查的问题：{note['question']}"]
+        for fact in note["facts"][:2]:
+            lines.append(f"来源《{fact['title']}》的说法：{fact['claim']}（{fact['url']}）")
+        lines.append(f"她当时的想法：{note['thought']}")
+        if note.get("revision"):
+            lines.append(f"后来修正：{note['revision']}")
+        lines.append("只在与当前问题直接相关时使用。来源说法和个人想法分开表达。" + UNTRUSTED)
+        req.system_prompt += "\n\n" + "\n".join(lines)
     async def _one_wander(self, force: bool = False) -> tuple[bool, str]:
         cfg = self._cfg()
         if not cfg.get("enabled") and not force:
@@ -351,6 +624,16 @@ class WebExplore(star.Star):
         st = self._state()
         if not force and int(st.get("count", 0)) >= int(cfg.get("max_per_day", 4)):
             return False, "今天够了"
+
+        if cfg.get("learning_enabled", True):
+            if self._learning_lock.locked():
+                return False, "上一轮还在读"
+            async with self._learning_lock:
+                try:
+                    return await self._learn_once(cfg, st, force)
+                except (OSError, ValueError, httpx.HTTPError) as exc:
+                    logger.info(f"[web_explore] 学习未完成：{type(exc).__name__}")
+                    return False, "这轮查询或保存失败"
 
         # 从启用的源里随机挑 2~3 个，凑一个候选池
         enabled = [s for s in (cfg.get("sources") or list(SOURCES)) if s in SOURCES]
@@ -532,6 +815,10 @@ class WebExplore(star.Star):
             return False
         if ok:
             self._archive(text)
+            try:
+                DeliveredShares().record(umo, text, "网上", item)
+            except (OSError, ValueError) as exc:
+                logger.warning(f"[web_explore] 已发送分享记忆写入失败：{type(exc).__name__}")
         return ok
 
     def _archive(self, text: str) -> None:
@@ -571,9 +858,34 @@ class WebExplore(star.Star):
         """立刻自己上网看一眼"""
         yield event.plain_result("我去翻翻…")
         ok, why = await self._one_wander(force=True)
-        if not ok:
+        if ok and self._cfg().get("learning_enabled", True):
+            yield event.plain_result(why)
+        elif not ok:
             yield event.plain_result(f"没看成：{why}")
 
+    @filter.command("上网计划")
+    async def cmd_agenda(self, event: AstrMessageEvent):
+        """查看她自己选的事情和最近的决定。"""
+        try:
+            agenda = LearningAgenda()
+        except (OSError, ValueError):
+            yield event.plain_result("学习清单暂时读不了")
+            return
+        labels = {"start": "开始", "resume": "续查", "follow": "等下次", "park": "搁置",
+                  "retry": "待重试", "done": "收尾", "drop": "放下", "rest": "休息"}
+        lines = ["未完的事"]
+        for item in agenda.tasks:
+            due = datetime.fromtimestamp(item["due"]).strftime("%m-%d %H:%M")
+            status = "搁置" if item["status"] == "parked" else "待查"
+            lines.append(f"{status} · {item['question']}（{due} 后可查）")
+        if not agenda.tasks:
+            lines.append("暂时没有")
+        if agenda.history:
+            lines.append("最近的决定")
+            for entry in agenda.history[-5:][::-1]:
+                topic = f"《{entry['topic']}》" if entry["topic"] else ""
+                lines.append(f"{labels.get(entry['action'], entry['action'])}{topic} · {entry['reason']}")
+        yield event.plain_result("\n".join(lines))
     @filter.command("上网")
     async def cmd_status(self, event: AstrMessageEvent, arg: str = ""):
         """上网状态：/上网 [开|关|状态]"""

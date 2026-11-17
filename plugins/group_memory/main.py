@@ -20,6 +20,11 @@ from astrbot.api import logger, star
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.message_components import Plain
 
+import sys
+sys.path.insert(0, str(Path(r"D:\QQrobot\tools")))
+from delivered_shares import DeliveredShares
+
+
 
 try:  # 易变注入挂到用户消息后，让 system_prompt 保持稳定（缓存友好）
     from astrbot.core.agent.message import TextPart as _TextPart
@@ -185,16 +190,22 @@ class Main(star.Star):
     # ---------------- 注入 ----------------
     @filter.on_llm_request()
     async def _inject_private(self, event: AstrMessageEvent, req) -> None:
-        """私聊记忆：最近聊过什么 + 她上一句 → 跨会话也接得上。"""
+        """按当前会话注入已发送分享、摘要和最近对话。"""
         umo = event.unified_msg_origin
         summary = (self.state.get("summary") or {}).get(umo) or {}
         last = (self.state.get("last_reply") or {}).get(umo)
         buf = (self.state.get("buffer") or {}).get(umo) or []
         lines = []
+        try:
+            shared = DeliveredShares().context(umo, event.get_message_str() or "")
+            if shared:
+                lines.append(shared)
+        except (OSError, ValueError, TypeError) as exc:
+            logger.warning(f"[memory] 读取已发送分享失败：{type(exc).__name__}")
         if summary.get("text"):
             lines.append(f"【你们最近聊过】{summary['text']}")
         if last:
-            lines.append(f"【你上一句说的】{last}")
+            lines.append(f"【最近一次聊天回复（不含主动通知）】{last}")
         if buf:
             recent = " / ".join(
                 b.split("：", 1)[-1].split(":", 1)[-1].strip()[:30] for b in buf[-3:]

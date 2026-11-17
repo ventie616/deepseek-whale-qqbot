@@ -43,6 +43,8 @@ except Exception:
     _interest_hint = lambda top=6: ""
     _interest_cat = lambda top=3: ""
 
+from delivered_shares import DeliveredShares
+
 from astrbot.api import logger, star
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.message_components import At, Plain
@@ -75,19 +77,20 @@ LEARNED_RULES = Path(r"D:\QQrobot\learned_rules.json")
 COOKIE_FILE = Path(r"D:\QQrobot\bili_account.json")
 
 
-NOTIFY_STATE = ROOT / "bili_notify_state.json"
+def _notify_state_path():
+    return ROOT / "bili_notify_state.json"
 
 
 def _load_notify_state() -> dict:
     try:
-        return json.loads(NOTIFY_STATE.read_text(encoding="utf-8")) or {}
+        return json.loads(_notify_state_path().read_text(encoding="utf-8")) or {}
     except Exception:
         return {}
 
 
 def _save_notify_state(d: dict) -> None:
     try:
-        NOTIFY_STATE.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
+        _notify_state_path().write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
     except Exception:
         pass
 
@@ -1582,16 +1585,16 @@ class Main(star.Star):
         if not layers:
             return False
         if not self.cfg.get("qq_split", False):
-            return await self._send_qq("\n".join(layers))
+            return await self._send_qq("\n".join(layers), video)
         ok_any = False
         for i, line in enumerate(layers):
             if i:
                 await asyncio.sleep(0.9)
-            sent = await self._send_qq(line)
+            sent = await self._send_qq(line, video)
             ok_any = ok_any or sent
         return ok_any
 
-    async def _send_qq(self, text: str) -> bool:
+    async def _send_qq(self, text: str, video: dict | None = None) -> bool:
         qq = str(self.cfg.get("target_qq") or "").strip()
         umo = self._umo(qq) if qq else None
         if not umo:
@@ -1609,6 +1612,17 @@ class Main(star.Star):
         if ok:
             self._append_chat(text, tag="B站")
             self._log_activity("push", "", text)
+            try:
+                item = video or {}
+                bvid = str(item.get("bvid") or "")
+                DeliveredShares().record(
+                    umo, text, "B站",
+                    {"title": item.get("title", ""),
+                     "url": f"https://www.bilibili.com/video/{bvid}" if re.fullmatch(r"BV[0-9A-Za-z]{10}", bvid) else ""},
+                )
+            except (OSError, ValueError) as exc:
+                logger.warning(f"[bili_pusher] 已发送分享记忆写入失败：{type(exc).__name__}")
+
         return ok
 
     # ---------------- 主流程 ----------------
@@ -1943,13 +1957,12 @@ class Main(star.Star):
             body = str(a.get("text") or "").replace("\n", " ").strip()
             if kind == "comment" and title:
                 act_lines.append(f"- {hm} 你在B站《{title[:20]}》下评论了：{body[:40]}")
-            elif kind == "push":
-                act_lines.append(f"- {hm} 你私聊推给主人一条：{body[:50]}")
+
         if act_lines:
             _extra(req, (
-                "\n\n【你最近跟主人在B站这边的往来】\n"
+                "\n\n【你最近在B站发过的评论】\n"
                 + "\n".join(act_lines)
-                + "\n（这些也是你们的聊天记录的一部分，别当成没发生过）"
+                + "\n（这是你在B站的行为记录，不代表已经在这个QQ会话里告诉过对方。）"
             ))
 
         _extra(req, (

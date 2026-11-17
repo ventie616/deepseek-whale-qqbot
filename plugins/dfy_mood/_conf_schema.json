@@ -81,5 +81,41 @@
     "description": "同类事件工具冷却（秒）",
     "default": 60,
     "hint": "同一种情绪事件在冷却时间内重复调用不会生效。"
+  },
+  "carry_over": {
+    "type": "bool",
+    "default": true,
+    "description": "跨天继承昨天的心情",
+    "hint": "每天第一次互动时，把昨天的情绪作为今天的基础参考（不再是全新的一天）。"
+  },
+  "carry_weight": {
+    "type": "float",
+    "default": 0.55,
+    "description": "跨天继承比例",
+    "hint": "0.55 表示昨天的偏离保留 55%；1 表示完全带过来，0 表示每天重置。"
+  },
+  "negative_slowdown": {
+    "type": "float",
+    "default": 1.8,
+    "description": "负面情绪衰减倍率",
+    "hint": "愉悦低于基线时，半衰期乘以这个倍数；越大，难过/生气持续越久。"
+  },
+  "overnight_max_hours": {
+    "type": "float",
+    "default": 4.0,
+    "description": "跨天时最多衰减几小时",
+    "hint": "过夜时间长也不按整夜衰减；默认 4 小时，让昨天的情绪（尤其负面）保留下来。"
+  },
+  "carry_positive": {
+    "type": "float",
+    "default": 0.5,
+    "description": "正面情绪跨天保留比例",
+    "hint": "开心、活跃、亲密高于基线时，保留这个比例；默认一半。"
+  },
+  "carry_negative": {
+    "type": "float",
+    "default": 0.75,
+    "description": "负面情绪跨天保留比例",
+    "hint": "难过、烦躁、疏远、吃醋这些低于基线的状态保留这个比例；默认 75%，更黏。"
   }
 }

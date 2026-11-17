@@ -17,19 +17,9 @@ import httpx
 from astrbot.api import logger, star
 from astrbot.api.event import AstrMessageEvent, filter
 import sys as _sys
-from pathlib import Path as _Path
-# offpeak 在仓库 tools/ 下；插件目录向上找到项目根
-for _cand in (_Path(__file__).resolve().parents[3] / "tools",
-              _Path(__file__).resolve().parents[2] / "tools",
-              _Path(r"D:\\QQrobot") / "tools"):
-    if (_cand / "offpeak.py").exists():
-        _sys.path.insert(0, str(_cand))
-        break
-try:
-    from offpeak import is_offpeak as _is_offpeak
-except Exception:  # 没配工具目录时不做限制
-    def _is_offpeak(now=None):
-        return True, "未配置"
+_sys.path.insert(0, r'D:\QQrobot\tools')
+from offpeak import is_offpeak as _is_offpeak
+from persona_learning import UNTRUSTED, persona_core
 
 ROOT = Path(r"D:\QQrobot")
 CFG = ROOT / "her_reading.json"
@@ -332,6 +322,12 @@ class HerReading(star.Star):
             await self._kb_index_embed(piece["title"])
         except Exception:
             pass
+        # 读后反思：想改自己就提一条（等人审）
+        try:
+            await self._propose_from_reading(piece, quote, feel, self_ref)
+        except Exception:
+            pass
+
         try:
             latest = sorted(KNOW_DIR.glob("*.md"), key=lambda x: x.stat().st_mtime, reverse=True)[:1]
             if latest:
@@ -373,7 +369,7 @@ class HerReading(star.Star):
             if prov is None:
                 return ""
             r = await prov.text_chat(prompt=prompt,
-                                     system_prompt="你是大肥鱼，一只懒散但会认真读东西的鲸鱼娘。")
+                                     system_prompt=persona_core() + "\n" + UNTRUSTED)
             return (r.completion_text or "").strip()
         except Exception as exc:  # noqa: BLE001
             logger.info(f"[her_reading] LLM 失败：{exc}")
@@ -614,6 +610,55 @@ class HerReading(star.Star):
         except Exception:
             pass
         yield event.plain_result(f"知识库《{KB_NAME}》现在有 {n} 篇")
+
+
+    # ---------------- 读后反思：想改人格就提一条 ----------------
+
+    async def _propose_from_reading(self, piece: dict, quote: str, feel: str, self_ref: str) -> None:
+        """读完一篇，如果她觉得该改自己，就写一条提案等人审。"""
+        cfg = self._cfg()
+        if not cfg.get("persona_proposal", True):
+            return
+        pdir = ROOT / "her_room" / "persona_proposals"
+        prompt = (
+            f"你刚读完《{piece['title']}》。\n"
+            f"你摘的话：{quote}\n你的感受：{feel}\n你想到自己：{self_ref}\n\n"
+            "问自己一件事：**这篇东西有没有让你想给自己加一条？**\n"
+            "比如某个看法变了、某个偏好不像自己了、想记住一个态度。\n"
+            "如果有，用第一人称写一句（不超过 60 字），像「我以后不想再…」「我现在更愿意…」；\n"
+            "如果没有，只输出三个字：不改。\n"
+            "只输出那一句或「不改」，别的都不要。"
+        )
+        try:
+            text = await self._llm(prompt)
+        except Exception:
+            return
+        line = (text or "").strip().strip("「」\"'").splitlines()[0][:120] if text else ""
+        if not line or "不改" in line[:6] or len(line) < 6:
+            logger.info("[her_reading] 这篇没让她想改自己")
+            return
+        # 防重复：最近 5 条提案里已有的就不重复提
+        try:
+            recent = []
+            if pdir.exists():
+                for f in sorted(pdir.glob("*.json"), reverse=True)[:5]:
+                    recent.append(str(json.loads(f.read_text(encoding="utf-8")).get("text", "")))
+            if any(line[:12] in r for r in recent):
+                logger.info("[her_reading] 类似的提议已经提过了")
+                return
+            pdir.mkdir(parents=True, exist_ok=True)
+            pid = datetime.now().strftime("%Y%m%d%H%M%S")
+            (pdir / f"{pid}.json").write_text(json.dumps({
+                "id": pid,
+                "text": line,
+                "reason": f"读完《{piece['title']}》想到的",
+                "t": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+                "state": "pending",
+                "source": "reading",
+            }, ensure_ascii=False, indent=2), encoding="utf-8")
+            logger.info(f"[her_reading] 提了一条人格改动：{line[:40]}")
+        except Exception as exc:  # noqa: BLE001
+            logger.info(f"[her_reading] 写提案失败：{exc}")
 
     # ---------------- 循环 / 命令 ----------------
     async def _loop(self) -> None:

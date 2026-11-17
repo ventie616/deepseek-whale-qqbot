@@ -21,19 +21,8 @@ import httpx
 from astrbot.api import logger, star
 from astrbot.api.event import AstrMessageEvent, filter
 import sys as _sys
-from pathlib import Path as _Path
-# offpeak 在仓库 tools/ 下；插件目录向上找到项目根
-for _cand in (_Path(__file__).resolve().parents[3] / "tools",
-              _Path(__file__).resolve().parents[2] / "tools",
-              _Path(r"D:\\QQrobot") / "tools"):
-    if (_cand / "offpeak.py").exists():
-        _sys.path.insert(0, str(_cand))
-        break
-try:
-    from offpeak import is_offpeak as _is_offpeak
-except Exception:  # 没配工具目录时不做限制
-    def _is_offpeak(now=None):
-        return True, "未配置"
+_sys.path.insert(0, r'D:\QQrobot\tools')
+from offpeak import is_offpeak as _is_offpeak
 
 ROOT = Path(r"D:\QQrobot")
 STORE = ROOT / "slang.json"

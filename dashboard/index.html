@@ -53,6 +53,16 @@
   .toast.show { opacity:1; transform:none; }
   .acts { font-size:12px; color:var(--muted); line-height:1.9; }
   .acts b { color:var(--fg); font-weight:600; }
+  .learn-card { margin-top:12px; }
+  .learn-heading, .learn-heading h2, .learn-heading h3 { margin:0 0 6px; }
+  .learn-meta { color:var(--muted); font-weight:400; font-size:11px; margin-left:6px; }
+  .learn-entry { padding:8px 0; overflow-wrap:anywhere; }
+  .learn-entry + .learn-entry { border-top:1px solid var(--line); }
+  .learn-tag { display:inline-block; color:var(--fg); background:var(--bg);
+               border:1px solid var(--line); border-radius:12px; padding:0 7px; margin-right:6px; }
+  .learn-entry summary { cursor:pointer; }
+  .learn-entry ul { margin:5px 0 0; padding-left:20px; }
+  .learn-entry blockquote { margin:4px 0 6px; padding-left:8px; border-left:2px solid var(--line); }
   a { color:var(--acc); }
   .tokchips { display:flex; flex-wrap:wrap; gap:10px; margin:6px 0 4px; }
   .tokchip { background:var(--bg); border:1px solid var(--line); border-radius:10px; padding:6px 10px; font-size:12px; }
@@ -171,7 +181,7 @@
 </div>
 <div class="navgroup"><div class="navtitle">创作</div>
 <button class="navitem" data-pane="pane-voice_status"><span class="ico">🔊</span>声音服务</button>
-<button class="navitem" data-pane="pane-wander"><span class="ico">🌐</span>上网记录</button>
+<button class="navitem" data-pane="pane-wander"><span class="ico">🌐</span>上网与学习</button>
 <button class="navitem" data-pane="pane-archive"><span class="ico">🏠</span>她的房间</button>
 <button class="navitem" data-pane="pane-slang"><span class="ico">💬</span>学到的词</button>
 </div>
@@ -243,9 +253,26 @@
 </section>
 
 <section class="pane" id="pane-wander" data-group="创作">
-<h2>上网记录</h2>
-<div class="card">
-  <h3>她自己上网看了什么 <span class="sub" id="wd-total"></span></h3>
+<div class="row learn-heading">
+  <h2>上网与学习</h2>
+  <button type="button" onclick="refreshLearningPane()">刷新</button>
+</div>
+<div class="grid">
+  <div class="card">
+    <h3>未完的事 <span class="learn-meta" id="learn-capacity"></span></h3>
+    <div class="acts" id="learn-tasks">读取中…</div>
+  </div>
+  <div class="card">
+    <h3>最近的决定</h3>
+    <div class="acts" id="learn-decisions">读取中…</div>
+  </div>
+</div>
+<div class="card learn-card">
+  <h3>网页学习笔记 <span class="learn-meta" id="learn-count"></span></h3>
+  <div class="acts" id="learn-notes">读取中…</div>
+</div>
+<div class="card learn-card">
+  <h3>上网记录 <span class="learn-meta" id="wd-total"></span></h3>
   <div class="acts" id="wd-list">读取中…</div>
 </div>
 </section>
@@ -276,6 +303,7 @@
 
 <!-- 子页 2：房间 -->
 <div class="subpane" id="arch-room">
+<div id="room-alert" style="display:none;margin-bottom:10px;padding:14px 16px;border-radius:10px;background:#fef3c7;border-left:5px solid #b45309;color:#3f1d0b;box-shadow:0 1px 2px rgba(0,0,0,.06)"></div>
 <div class="grid">
   <div class="card">
     <h3>她自己写的 <span class="sub" id="room-sum"></span></h3>
@@ -300,7 +328,10 @@
 <div class="subpane" id="arch-read">
 <div class="grid">
   <div class="card">
-    <h3>她读过的 <span class="sub" id="rd-count"></span></h3>
+    <div class="row learn-heading">
+      <h3>她读过的 <span class="learn-meta" id="rd-count"></span></h3>
+      <button type="button" onclick="document.querySelector('[data-pane=pane-wander]').click()">网页学习笔记</button>
+    </div>
     <div class="acts" id="rd-list">读取中…</div>
   </div>
 </div>
@@ -816,6 +847,22 @@ function rangeBar() {
   const mk = (h, label) => `<button onclick="loadEmotionChart(${h})" style="margin-right:6px;${cur === h ? 'font-weight:700;border-color:#60a5fa' : ''}">${label}</button>`;
   return `<div class="btns" style="margin-bottom:6px">${mk(24, '24 小时')}${mk(48, '48 小时')}${mk(168, '7 天')}</div>`;
 }
+
+async function decideProposal(id, ok) {
+  try {
+    const r = await fetch('/api/room/decide', {
+      method: 'POST',
+      headers: {'X-Token': TOKEN, 'Content-Type': 'application/json'},
+      body: JSON.stringify({id, ok}),
+    });
+    const d = await r.json();
+    if (!d.ok) { alert('失败：' + (d.error || r.status)); return; }
+    if (window.loadRoom) loadRoom();
+  } catch (e) {
+    alert('请求失败：' + e);
+  }
+}
+
 async function showRoomFile(kind, name) {
   const r = await fetch(`/api/room/file?kind=${kind}&name=${encodeURIComponent(name)}`,
                         {headers: {'X-Token': _token()}});
@@ -1068,6 +1115,7 @@ async function rewriteDiary() {
 }
 
 async function loadAll() {
+  if ($('pane-wander').classList.contains('on') && window.refreshLearningPane) refreshLearningPane();
   loadTokens().catch(() => {});
   loadDiary().catch(() => {});
   loadBiliHistory().catch(() => {});
@@ -1382,6 +1430,22 @@ async function loadRoom() {
         : '还什么都没存';
     }
     const props = d.proposals || [];
+    const alertBox = document.getElementById('room-alert');
+    if (alertBox) {
+      if (props.length) {
+        alertBox.style.display = 'block';
+        alertBox.innerHTML = `<div style="font-weight:700;font-size:15px;color:#7c2d12">她有 ${props.length} 条想改自己</div>` +
+          props.map(x => `<div style="margin:10px 0 0">
+            <div style="font-size:15px;color:#1c1917">「${x.text}」</div>
+            <div style="color:#92400e;font-size:12px;margin:4px 0 10px">${x.reason || ''} · ${x.t}</div>
+            <button onclick="decideProposal('${x.id}', true)"
+              style="background:#15803d;color:#fff;border:0;border-radius:6px;padding:6px 16px;font-size:13px;font-weight:600;cursor:pointer;margin-right:8px">同意</button>
+            <button onclick="decideProposal('${x.id}', false)"
+              style="background:#fff;color:#7f1d1d;border:1px solid #b91c1c;border-radius:6px;padding:6px 16px;font-size:13px;font-weight:600;cursor:pointer">拒绝</button></div>`).join('');
+      } else {
+        alertBox.style.display = 'none';
+      }
+    }
     const pcount = document.getElementById('room-props-count');
     if (pcount) pcount.textContent = props.length ? `${props.length} 条待审` : '';
     const pbox = document.getElementById('room-props');
@@ -1482,12 +1546,111 @@ async function loadImageGen() {
   }
 }
 
+const learningActions = {
+  start:'开始', resume:'续查', follow:'等下次', park:'搁置',
+  retry:'待重试', done:'收尾', drop:'放下', rest:'休息'
+};
+let learningRequest;
+let previousNotes;
+
+function learningTime(epoch) {
+  if (!Number.isFinite(epoch) || epoch <= 0) return '—';
+  return new Date(epoch * 1000).toLocaleString('zh-CN', {
+    month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false
+  });
+}
+
+function learningAttribute(value) {
+  return esc(value).replace(/"/g, '&quot;');
+}
+
+function learningSource(fact) {
+  const name = esc(fact.title || '原文');
+  try {
+    const link = new URL(fact.url);
+    if (['https:', 'http:'].includes(link.protocol)) {
+      return '<a href="' + learningAttribute(link.href) + '" target="_blank" rel="noopener noreferrer">' + name + '</a>';
+    }
+  } catch (e) {}
+  return name;
+}
+
+function renderLearning(data) {
+  const tasks = data.tasks || [];
+  $('learn-capacity').textContent = data.agenda_error ? '' : tasks.length + ' / ' + data.capacity;
+  $('learn-tasks').innerHTML = tasks.map(item => {
+    const state = item.status === 'parked' ? '搁置' : '待查';
+    const when = item.due * 1000 <= Date.now() ? '现在可查' : learningTime(item.due) + ' 后可查';
+    return '<div class="learn-entry"><span class="learn-tag">' + state + '</span><b>' +
+      esc(item.question || item.topic || '未命名') + '</b>' +
+      '<div>' + esc(item.why || '') + '</div>' +
+      (item.reason && item.reason !== item.why ? '<div>上次决定 · ' + esc(item.reason) + '</div>' : '') +
+      '<div class="learn-meta">' + esc(when) + '</div></div>';
+  }).join('') || esc(data.agenda_error || '暂时没有未完的事');
+
+  $('learn-decisions').innerHTML = (data.decisions || []).map(item =>
+    '<div class="learn-entry"><span class="learn-tag">' + esc(learningActions[item.action] || item.action || '记录') +
+    '</span><b>' + esc(item.topic || '') + '</b> <span class="learn-meta">' +
+    esc(learningTime(item.at)) + '</span><div>' + esc(item.reason || '') + '</div></div>'
+  ).join('') || '还没有决定';
+
+  const notes = data.notes || [];
+  const fingerprint = JSON.stringify(notes);
+  if (fingerprint === previousNotes) return;
+  previousNotes = fingerprint;
+  $('learn-count').textContent = notes.length ? '最近 ' + notes.length + ' 篇' : '';
+  const box = $('learn-notes');
+  const expanded = new Set([...box.querySelectorAll('details[open]')].map(el => el.dataset.noteId));
+  const questions = new Map(notes.map(note => [note.id, note.question]));
+  box.innerHTML = notes.map(note => {
+    const parent = questions.get(note.parent_id);
+    const facts = (note.facts || []).map(fact =>
+      '<li>' + esc(fact.claim || '') + ' · ' + learningSource(fact) +
+      (fact.evidence ? '<blockquote>' + esc(fact.evidence) + '</blockquote>' : '') + '</li>'
+    ).join('');
+    return '<details class="learn-entry" data-note-id="' + learningAttribute(note.id || '') + '"' +
+      (expanded.has(note.id) ? ' open' : '') + '>' +
+      '<summary><b>' + esc(note.question || '') + '</b><span class="learn-meta">' +
+      esc((note.read_at || '').slice(0, 16).replace('T', ' ')) + '</span></summary>' +
+      (parent ? '<div class="learn-meta">接着查 · ' + esc(parent) + '</div>' : '') +
+      '<div><b>她的想法</b> · ' + esc(note.thought || '') + '</div>' +
+      (note.revision ? '<div><b>后来改了看法</b> · ' + esc(note.revision) + '</div>' : '') +
+      (note.next_question ? '<div><b>还想追的问题</b> · ' + esc(note.next_question) + '</div>' : '') +
+      (facts ? '<div><b>来源与原文</b><ul>' + facts + '</ul></div>' : '') + '</details>';
+  }).join('') || '第一次网页学习完成后，笔记会出现在这里';
+}
+
+function loadLearning() {
+  if (!learningRequest) {
+    learningRequest = api('/api/learning')
+      .then(data => {
+        if (data.error) throw new Error(data.error);
+        renderLearning(data);
+      })
+      .catch(() => {
+        previousNotes = undefined;
+        ['learn-capacity','learn-count'].forEach(id => { $(id).textContent = ''; });
+        ['learn-tasks','learn-decisions','learn-notes'].forEach(id => {
+          $(id).textContent = '暂时读不到学习记录';
+        });
+      })
+      .finally(() => { learningRequest = null; });
+  }
+  return learningRequest;
+}
+
+function refreshLearningPane() {
+  loadLearning();
+  loadWander();
+}
+
 async function loadWander() {
   try {
     const d = await api('/api/wander');
     document.getElementById('wd-total').textContent = `共 ${d.total} 次`;
     document.getElementById('wd-list').innerHTML = (d.items || []).map(it =>
-      `<div style="margin-bottom:10px"><b>${it.title||''}</b><br><span style="color:#6b829e">${it.topic||''} · ${it.t||''}</span><br>${it.line1||''}</div>`
+      '<div class="learn-entry"><b>' + esc(it.title || '') + '</b><br><span class="learn-meta">' +
+      esc([it.topic, it.t].filter(Boolean).join(' · ')) + '</span><br>' + esc(it.line1 || '') + '</div>'
     ).join('') || '还没出去逛过';
   } catch (e) {
     document.getElementById('wd-list').textContent = '读取失败：' + e.message;
@@ -1523,7 +1686,7 @@ async function loadSlang() {
       setTimeout(() => { window.archShow ? window.archShow(window._archSub || 'arch-day') : window.loadArchive(); }, 0);
     }
     if (id === 'pane-voice_status' && window.loadVoiceStatus) { setTimeout(() => { window.loadVoiceStatus(); window.loadCovers(); }, 0); }
-    if (id === 'pane-wander' && window.loadWander) setTimeout(() => window.loadWander(), 0);
+    if (id === 'pane-wander' && window.refreshLearningPane) setTimeout(refreshLearningPane, 0);
     if (id === 'pane-slang' && window.loadSlang) setTimeout(() => window.loadSlang(), 0);
     if (id === 'pane-activity' && window.loadActivity) setTimeout(() => window.loadActivity(), 0);
   }

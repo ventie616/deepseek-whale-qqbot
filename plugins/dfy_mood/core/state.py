@@ -82,16 +82,75 @@ def _toward(
     return target + (value - target) * (0.5 ** (hours / half_life))
 
 
-def apply_decay(state: MoodState, now: float, half_lives: dict | None = None) -> None:
-    """把 state 的时间推进到 now，期间的变化用指数衰减补齐。"""
+DEFAULT_CARRY_WEIGHT = 0.55      # 昨天残留多少进今天
+DEFAULT_NEGATIVE_SLOWDOWN = 1.8  # 负面情绪衰减慢几倍
+
+
+DEFAULT_CARRY_POSITIVE = 0.50   # 正面情绪跨天保留比例
+DEFAULT_CARRY_NEGATIVE = 0.75   # 负面情绪跨天保留比例（更黏）
+
+
+def _lerp(base: float, value: float, weight: float) -> float:
+    return clamp(base + (value - base) * weight)
+
+
+def apply_daily_carry(
+    state: MoodState,
+    weight: float = DEFAULT_CARRY_WEIGHT,
+    positive_weight: float | None = None,
+    negative_weight: float | None = None,
+) -> None:
+    """跨天时，把昨天的状态当作今天的「基础参考」。
+
+    正面和负面可以给不同权重：正面睡一觉淡一半，负面带得更久。
+    """
+    try:
+        w = float(weight)
+    except (TypeError, ValueError):
+        w = DEFAULT_CARRY_WEIGHT
+    w = min(1.0, max(0.0, w))
+    pos = w if positive_weight is None else min(1.0, max(0.0, float(positive_weight)))
+    neg = w if negative_weight is None else min(1.0, max(0.0, float(negative_weight)))
+
+    # 愉悦：高于基线算正面，低于基线算负面
+    vw = pos if state.valence >= BASELINE_VALENCE else neg
+    state.valence = _lerp(BASELINE_VALENCE, state.valence, vw)
+
+    # 活跃：同理（低于基线＝没精神，算负面）
+    aw = pos if state.arousal >= BASELINE_AROUSAL else neg
+    state.arousal = _lerp(BASELINE_AROUSAL, state.arousal, aw)
+
+    # 亲密：高亲密算正面，低亲密（疏远）算负面
+    iw = pos if state.intimacy >= BASELINE_INTIMACY else neg
+    state.intimacy = _lerp(BASELINE_INTIMACY, state.intimacy, iw)
+
+    # 吃醋永远是负面
+    state.jealousy = clamp(state.jealousy * neg)
+
+
+def apply_decay(state: MoodState, now: float, half_lives: dict | None = None,
+                max_hours: float | None = None) -> None:
+    """把 state 的时间推进到 now，期间的变化用指数衰减补齐。
+
+    max_hours: 跨天时用来截断过夜时长，避免睡一觉负面情绪被抹平。
+    """
     half_lives = half_lives or DEFAULT_HALF_LIVES
     hours = (now - state.updated_at) / 3600.0
+    if max_hours is not None and hours > max_hours:
+        hours = max_hours
     if hours <= 0:
         state.updated_at = now
         return
 
+    # 负面情绪衰减更慢（难过不会睡一觉就好）
+    slowdown = float(
+        (half_lives or {}).get("negative_slowdown", DEFAULT_NEGATIVE_SLOWDOWN) or 1.0
+    )
+    valence_hl = half_lives["valence"]
+    if state.valence < BASELINE_VALENCE and slowdown > 1.0:
+        valence_hl = valence_hl * slowdown
     state.valence = clamp(
-        _toward(state.valence, BASELINE_VALENCE, hours, half_lives["valence"])
+        _toward(state.valence, BASELINE_VALENCE, hours, valence_hl)
     )
     state.arousal = clamp(
         _toward(state.arousal, BASELINE_AROUSAL, hours, half_lives["arousal"])
@@ -104,8 +163,11 @@ def apply_decay(state: MoodState, now: float, half_lives: dict | None = None) ->
     state.intimacy = clamp(
         _toward(state.intimacy, BASELINE_INTIMACY, hours, half_lives["intimacy"])
     )
+    jealous_hl = half_lives["jealousy"]
+    if state.jealousy >= 10.0 and slowdown > 1.0:
+        jealous_hl = jealous_hl * min(2.0, slowdown)
     state.jealousy = clamp(
-        _toward(state.jealousy, 0.0, hours, half_lives["jealousy"])
+        _toward(state.jealousy, 0.0, hours, jealous_hl)
     )
     state.updated_at = now
 

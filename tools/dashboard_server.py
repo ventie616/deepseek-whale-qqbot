@@ -38,6 +38,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import urllib.request
 from urllib.parse import parse_qs, quote, urlparse
 
+from persona_learning import MAX_OPEN_TASKS, LearningAgenda, LearningJournal, public_url
+
 ROOT = pathlib.Path(r"D:\QQrobot")
 DASH = ROOT / "dashboard" / "index.html"
 
@@ -793,6 +795,35 @@ def wander_records(limit: int = 8) -> dict:
             "items": rows}
 
 
+def learning_data() -> dict:
+    room = ROOT / "her_room"
+    try:
+        agenda = LearningAgenda(room / "learning_agenda.json")
+        tasks = agenda.tasks[:MAX_OPEN_TASKS]
+        decisions = list(reversed(agenda.history[-10:]))
+        agenda_error = ""
+    except (OSError, ValueError):
+        tasks, decisions = [], []
+        agenda_error = "学习清单暂时读不了"
+
+    notes = []
+    for note in LearningJournal(room / "knowledge" / "web_learning").recent(12):
+        facts = []
+        for fact in note["facts"][:5]:
+            if not isinstance(fact, dict):
+                continue
+            facts.append({"title": fact.get("title", ""), "url": public_url(fact.get("url", "")),
+                          "claim": fact.get("claim", ""), "evidence": fact.get("evidence", "")})
+        notes.append({
+            "id": note.get("id"), "read_at": note.get("read_at"), "question": note["question"],
+            "parent_id": note.get("parent_id"), "thought": note.get("thought", ""),
+            "revision": note.get("revision", ""), "next_question": note.get("next_question", ""),
+            "facts": facts,
+        })
+    return {"tasks": tasks, "decisions": decisions, "notes": notes,
+            "capacity": MAX_OPEN_TASKS, "agenda_error": agenda_error}
+
+
 def slang_status() -> dict:
     import json as _json
 
@@ -1246,6 +1277,12 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/image_gen":
             self._json(image_records())
+            return
+        if path == "/api/learning":
+            if not self._authorized():
+                self._json({"error": "未授权"}, 401)
+                return
+            self._json(learning_data())
             return
         if path == "/api/wander":
             self._json(wander_records())

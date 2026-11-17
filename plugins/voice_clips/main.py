@@ -18,6 +18,11 @@ import random
 import re
 from datetime import datetime
 from pathlib import Path
+import subprocess
+from uuid import uuid4
+
+from .listening import ListeningMemory, QUESTIONS
+from astrbot.core.star.filter.command import GreedyStr
 
 from astrbot.api import logger, star
 from astrbot.api.event import AstrMessageEvent, filter
@@ -34,6 +39,8 @@ FULL_HINTS = ("整首", "完整", "全曲", "全长")
 class Main(star.Star):
     def __init__(self, context: star.Context) -> None:
         super().__init__(context)
+        self._listening = ListeningMemory(LIB.parent / "data" / "co_listening.json")
+        self._listen_busy: set[str] = set()
 
     # ---------------- 数据 ----------------
     def _index(self) -> dict:
@@ -102,12 +109,17 @@ class Main(star.Star):
             d = ARCHIVE / re.sub(r"[^\w\-]+", "_", umo).strip("_")[:80]
             d.mkdir(parents=True, exist_ok=True)
             kind = "整首" if info.get("type") == "full" else "一段"
+            activity = info.get("activity") == "co_listening"
+            description = (
+                f"（一起听了一段曲库原音）《{info.get('song')}》"
+                if activity else f"（唱了{kind}）《{info.get('song')}》"
+            )
             rec = {
                 "t": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
                 "role": "bot",
                 "uid": "self",
                 "name": "本鲸",
-                "text": f"（唱了{kind}）《{info.get('song')}》",
+                "text": description,
             }
             with (d / f"{datetime.now():%Y-%m-%d}.jsonl").open("a", encoding="utf-8") as f:
                 f.write(json.dumps(rec, ensure_ascii=False) + "\n")
@@ -136,6 +148,88 @@ class Main(star.Star):
     def _queue(self, event: AstrMessageEvent, info: dict) -> None:
         event.set_extra(PENDING_KEY, info)
         asyncio.create_task(self._fallback(event))
+
+    def _listening_clip(self, want: str) -> tuple[dict | None, str]:
+        info, error = self._pick(want, full=False)
+        if info:
+            return {**info, "activity": "co_listening", "source_label": "曲库原音"}, ""
+        info, error = self._pick(want, full=True)
+        if not info:
+            return None, error
+        # Reuse the library file, decode a short excerpt, and retain a unique name.
+        ffmpeg = Path(r"C:\Users\venti\miniforge3\Library\bin\ffmpeg.exe")
+        probe = ffmpeg.with_name("ffprobe.exe")
+        duration = subprocess.run(
+            [str(probe), "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=nw=1:nk=1", info["path"]],
+            capture_output=True, text=True, timeout=15, check=True,
+        )
+        seconds = float(duration.stdout.strip())
+        if seconds < 5:
+            raise ValueError("这首素材太短")
+        start = max(0, min(seconds * .25, seconds - 18))
+        folder = LIB.parent / "voice_out" / "listening"
+        folder.mkdir(parents=True, exist_ok=True)
+        output = folder / f"{uuid4().hex}.mp3"
+        process = subprocess.run(
+            [str(ffmpeg), "-nostdin", "-v", "error", "-i", info["path"],
+             "-ss", str(start), "-t", "18", "-c:a", "libmp3lame", "-b:a", "128k", str(output)],
+            capture_output=True, timeout=30,
+        )
+        if process.returncode != 0 or not output.is_file() or output.stat().st_size < 1000:
+            output.unlink(missing_ok=True)
+            raise ValueError("这段音频没准备好")
+        return {**info, "type": "clip", "path": str(output),
+                "activity": "co_listening", "source_label": "曲库原音"}, ""
+
+    @filter.command("一起听歌")
+    async def listen_together(self, event: AstrMessageEvent, song: GreedyStr = ""):
+        """一起听一段曲库音频，接着聊听感；/一起听歌 结束。"""
+        if not event.is_private_chat():
+            yield event.plain_result("一起听歌先在私聊里用，来私聊叫我。")
+            return
+        key = event.unified_msg_origin
+        want = str(song or "").strip().strip("《》")
+        if want in ("结束", "停", "停止", "不听了", "退出"):
+            if key in self._listen_busy:
+                yield event.plain_result("音频还在准备，等这段发完就可以结束。")
+                return
+            self._listening.stop(key)
+            yield event.plain_result("好，这轮先听到这里。")
+            return
+        if key in self._listen_busy:
+            yield event.plain_result("这段还在准备，等一下。")
+            return
+        self._listen_busy.add(key)
+        try:
+            info, error = await asyncio.to_thread(self._listening_clip, want)
+            if not info:
+                yield event.plain_result(error)
+                return
+            question = random.choice(QUESTIONS)
+            yield event.plain_result(f"一起听《{info['song']}》这一段曲库原音。\n{question}")
+            if await self._send_audio(key, info):
+                self._listening.start(key, info, question)
+                event.set_extra("feiyu_audio_scheduled", True)
+            else:
+                yield event.plain_result("这段没发出去，我们待会儿再试。")
+        except Exception as exc:
+            logger.warning(f"[listening] 一起听歌失败：{type(exc).__name__}")
+            yield event.plain_result("这段暂时没准备好，换首试试。")
+        finally:
+            self._listen_busy.discard(key)
+
+    @filter.on_llm_request()
+    async def listening_context(self, event: AstrMessageEvent, req) -> None:
+        if not event.is_private_chat() or event.get_extra("co_listening_injected"):
+            return
+        current = getattr(req, "system_prompt", "") or ""
+        if "大肥鱼" not in current and "鲸鱼娘" not in current:
+            return
+        context = self._listening.context(event.unified_msg_origin, event.get_message_str() or "")
+        if context:
+            req.system_prompt = current + "\n\n" + context
+            event.set_extra("co_listening_injected", True)
 
     # ---------------- 指令 / 工具 ----------------
     @filter.command("唱一段")

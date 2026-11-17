@@ -8,28 +8,8 @@ from astrbot.api.event import AstrMessageEvent, MessageChain, filter
 from astrbot.api.star import Context, Star, StarTools, register
 from astrbot.core.star.filter.command import GreedyStr
 
-ROOT_OUT = Path(r"D:\QQrobot\voice_out")
-
 from .client import VoiceClient
-
-
-EMOTION_CFG = Path(r"D:\QQrobot\voice_emotion.json")
-MOOD_FILE = Path(r"D:\QQrobot\mood.json")
-
-
-def _emotion_style() -> tuple[str, float] | None:
-    """按当前心情挑声线和语速；没开或读不到就返回 None。"""
-    try:
-        cfg = json.loads(EMOTION_CFG.read_text(encoding="utf-8"))
-        if not cfg.get("enabled", True):
-            return None
-        label = str((json.loads(MOOD_FILE.read_text(encoding="utf-8")) or {}).get("mood") or "")
-        rule = (cfg.get("map") or {}).get(label)
-        if not rule:
-            return None
-        return str(rule.get("voice") or ""), float(rule.get("speed") or 1.0)
-    except Exception:
-        return None
+from .speech import read_config, synthesize_speech
 
 
 @register("feiyu_voice", "kaiyuey03", "肥鱼说话、换声与按谱唱歌统一接口", "0.1.0")
@@ -122,6 +102,8 @@ class FeiyuVoice(Star):
         self.jobs[row["id"]] = dict(origin=origin, pending=True)
         self.persist()
         self.watch(row["id"], origin)
+        if kind == "speech":
+            event.set_extra("feiyu_audio_scheduled", True)
         return f"已提交肥鱼任务 {row['id']}，生成后会在本会话发送音频。"
 
     async def attached_asset(self, event, suffixes):
@@ -143,41 +125,21 @@ class FeiyuVoice(Star):
         raise ValueError("请在本条消息中附上所需音频或 MIDI／ABC 文件。")
 
 
+    def _voice_config(self) -> dict:
+        return {**self.config, **read_config()}
+
     def _provider(self) -> str:
-        return str(self.config.get("provider") or "local").lower()
+        return str(self._voice_config().get("provider") or "local").lower()
 
     async def _speak_qwen(self, text: str) -> Path:
-        """用阿里云 cosyvoice-v2 合成，返回 wav 路径。"""
-        from datetime import datetime as _dt
-
-        from .qwen_tts import synthesize
-
-        voice = str(self.config.get("qwen_voice") or "longhua_v2")
-        try:
-            speed = float(self.config.get("qwen_speed", 1.0))
-        except (TypeError, ValueError):
-            speed = 1.0
-        # 心情影响声线和语速
-        styled = _emotion_style()
-        if styled:
-            voice, speed = styled
-            logger.info(f"[feiyu_voice] 按心情调了声线：{voice} / {speed}")
-        out = ROOT_OUT / f"qwen_{_dt.now().strftime('%H%M%S')}.wav"
-        await synthesize(str(text)[:600], out, voice=voice, speed=speed)
-        if self._provider() == "qwen_rvc":
-            from .rvc_client import convert
-
-            final = ROOT_OUT / f"her_{_dt.now().strftime('%H%M%S')}.wav"
-            try:
-                return await asyncio.to_thread(convert, out, final)
-            except Exception as exc:  # noqa: BLE001
-                logger.info(f"[feiyu_voice] RVC 失败，用 qwen 原音：{exc}")
-        return out
+        return await synthesize_speech(str(text)[:600], self._voice_config())
 
     async def _say_qwen(self, event, text: str) -> str:
         path = await self._speak_qwen(text)
         chain = MessageChain([Comp.Record.fromFileSystem(str(path))])
         sent = await self.context.send_message(event.unified_msg_origin, chain)
+        if sent:
+            event.set_extra("feiyu_audio_scheduled", True)
         return "喏。" if sent else f"语音生成好了但发不出去：{path.name}"
 
     @filter.command("肥鱼状态", alias={"feiyu_status"})
@@ -197,7 +159,9 @@ class FeiyuVoice(Star):
         try:
             if self._provider() in ("qwen", "qwen_rvc"):
                 try:
-                    yield event.plain_result(await self._say_qwen(event, str(text)))
+                    receipt = await self._say_qwen(event, str(text))
+                    if not event.get_extra("feiyu_audio_scheduled"):
+                        yield event.plain_result(receipt)
                     return
                 except Exception as exc:  # noqa: BLE001
                     logger.info(f"[feiyu_voice] qwen 失败，转本地：{exc}")
@@ -253,7 +217,7 @@ class FeiyuVoice(Star):
     async def speak_tool(
         self, event: AstrMessageEvent, text: str, style: str = "cute"
     ) -> str:
-        """用肥鱼声音朗读或说话。需要演唱谱子时使用 feiyu_sing；已有音频换声使用 feiyu_convert。
+        """用肥鱼的声音说话。日常对话直接接话，像发一条短语音；适当用标点留停顿。朗读时保留原文。演唱用 feiyu_sing，已有音频换声用 feiyu_convert。
 
         Args:
             text(string): 要说的文字，最多2000字。

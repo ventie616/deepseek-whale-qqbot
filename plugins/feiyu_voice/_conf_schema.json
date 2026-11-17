@@ -50,10 +50,11 @@
     "default": false
   },
   "provider": {
-    "description": "语音引擎：qwen=阿里云 cosyvoice-v2；local=本机 9880 服务",
+    "description": "语音引擎：qwen_rvc=云端合成后本地换声；qwen=云端合成；local=本机服务",
     "type": "string",
     "default": "qwen",
     "options": [
+      "qwen_rvc",
       "qwen",
       "local"
     ]
@@ -76,5 +77,14 @@
     "description": "qwen 语速（1.0 正常，0.9 稍慢）",
     "type": "float",
     "default": 1.0
+  },
+  "rvc_speech_voice": {
+    "description": "对话语音换声模型",
+    "type": "string",
+    "default": "feiyu",
+    "options": [
+      "feiyu_dialogue",
+      "feiyu"
+    ]
   }
 }

@@ -25,7 +25,7 @@ try:
         BASELINE_ENERGY,
         BASELINE_INTIMACY,
         BASELINE_VALENCE,
-        apply_decay,
+        apply_decay, apply_daily_carry,
         apply_event,
         derive_label,
         intensity_level,
@@ -130,6 +130,12 @@ class DfyMoodPlugin(Star):
                 lives[name] = float(self._cfg(f"half_life_{name}", default))
             except (TypeError, ValueError):
                 lives[name] = default
+        try:
+            lives["negative_slowdown"] = float(
+                self._cfg("negative_slowdown", 1.8)
+            )
+        except (TypeError, ValueError):
+            lives["negative_slowdown"] = 1.8
         return lives
 
     def _owner_ids(self) -> set[str]:
@@ -164,7 +170,32 @@ class DfyMoodPlugin(Star):
         now = time.time()
         state = self.store.get(key)
         gap_seconds = max(0.0, now - state.last_interact_at)
-        apply_decay(state, now, self._half_lives())
+        # 跨天：昨天的心情作为今天的底子
+        try:
+            from datetime import date as _date
+            prev_day = _date.fromtimestamp(state.updated_at)
+            now_day = _date.fromtimestamp(now)
+            if prev_day != now_day and bool(self._cfg("carry_over", True)):
+                weight = float(self._cfg("carry_weight", 0.55))
+                pos_w = float(self._cfg("carry_positive", 0.50))
+                neg_w = float(self._cfg("carry_negative", 0.75))
+                apply_daily_carry(state, weight, positive_weight=pos_w,
+                                  negative_weight=neg_w)
+                self.logger.info(
+                    f"[心情] 跨天继承 {prev_day}→{now_day}："
+                    f"愉悦 {state.valence:.0f} 亲密 {state.intimacy:.0f}"
+                )
+        except Exception as exc:
+            self.logger.warning(f"[心情] 跨天继承失败: {exc}")
+        # 跨天时衰减时长截断（默认 4 小时），免得一夜把负面情绪抹平
+        max_hours = None
+        try:
+            from datetime import date as _date2
+            if _date2.fromtimestamp(state.updated_at) != _date2.fromtimestamp(now):
+                max_hours = float(self._cfg("overnight_max_hours", 4.0))
+        except Exception:
+            max_hours = None
+        apply_decay(state, now, self._half_lives(), max_hours=max_hours)
         events = self.engine.analyze(
             key,
             text,
